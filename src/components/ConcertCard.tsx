@@ -1,6 +1,8 @@
 import { format, formatDistanceToNow, isFuture } from "date-fns";
-import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check } from "lucide-react";
+import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil } from "lucide-react";
 import type { Concert } from "@/types/concert";
+import { useState } from "react";
+import { EditConcertDialog } from "./EditConcertDialog";
 
 interface ConcertCardProps {
   concert: Concert;
@@ -11,11 +13,14 @@ interface ConcertCardProps {
 }
 
 export function ConcertCard({ concert, extraDates = [], index, selected, onToggleSelect }: ConcertCardProps) {
+  const [showEdit, setShowEdit] = useState(false);
   const concertDate = new Date(concert.date);
   const saleDate = concert.ticket_sale_date ? new Date(concert.ticket_sale_date) : null;
   const ticketsSelling = concert.tickets_available;
   const saleNotStarted = saleDate && isFuture(saleDate);
   const allDates = [concert, ...extraDates];
+  const displayDates = allDates.slice(0, 2);
+  const hiddenCount = allDates.length - 2;
 
   return (
     <div
@@ -36,6 +41,14 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
         }`}
       >
         {selected && <Check className="h-4 w-4 text-primary-foreground" />}
+      </button>
+
+      {/* Edit button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setShowEdit(true); }}
+        className="absolute left-3 top-11 z-20 flex h-6 w-6 items-center justify-center rounded-md border border-muted-foreground/40 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-background/80"
+      >
+        <Pencil className="h-3.5 w-3.5 text-foreground" />
       </button>
 
       {/* Image */}
@@ -89,9 +102,9 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
           <span className="truncate">{concert.venue}</span>
         </div>
 
-        {/* Dates - grouped */}
+        {/* Dates - grouped, max 2 shown */}
         <div className="space-y-1 mb-3">
-          {allDates.map((d, i) => {
+          {displayDates.map((d, i) => {
             const dt = new Date(d.date);
             return (
               <div key={d.id} className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -102,9 +115,9 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
               </div>
             );
           })}
-          {extraDates.length > 0 && (
+          {hiddenCount > 0 && (
             <p className="text-xs text-accent font-medium ml-5">
-              {allDates.length} shows
+              +{hiddenCount} more · {allDates.length} shows total
             </p>
           )}
         </div>
@@ -136,6 +149,10 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
           </a>
         )}
       </div>
+
+      {showEdit && (
+        <EditConcertDialog concert={concert} onClose={() => setShowEdit(false)} />
+      )}
     </div>
   );
 }

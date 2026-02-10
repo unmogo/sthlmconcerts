@@ -16,7 +16,8 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, ids } = await req.json();
+    const body = await req.json();
+    const { action, ids } = body;
 
     if (action === "delete" && Array.isArray(ids) && ids.length > 0) {
       const { error } = await supabase
@@ -28,6 +29,20 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, message: `Deleted ${ids.length} events` }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "update" && body.id && body.updates) {
+      const { error } = await supabase
+        .from("concerts")
+        .update(body.updates)
+        .eq("id", body.id);
+
+      if (error) throw error;
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Event updated" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
