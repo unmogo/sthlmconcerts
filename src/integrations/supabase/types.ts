@@ -14,7 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      concerts: {
+        Row: {
+          artist: string
+          created_at: string
+          date: string
+          id: string
+          image_url: string | null
+          source: string | null
+          source_url: string | null
+          ticket_sale_date: string | null
+          ticket_url: string | null
+          tickets_available: boolean | null
+          updated_at: string
+          venue: string
+        }
+        Insert: {
+          artist: string
+          created_at?: string
+          date: string
+          id?: string
+          image_url?: string | null
+          source?: string | null
+          source_url?: string | null
+          ticket_sale_date?: string | null
+          ticket_url?: string | null
+          tickets_available?: boolean | null
+          updated_at?: string
+          venue: string
+        }
+        Update: {
+          artist?: string
+          created_at?: string
+          date?: string
+          id?: string
+          image_url?: string | null
+          source?: string | null
+          source_url?: string | null
+          ticket_sale_date?: string | null
+          ticket_url?: string | null
+          tickets_available?: boolean | null
+          updated_at?: string
+          venue?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
