@@ -11,12 +11,16 @@ interface ConcertGridProps {
   filter: EventType | "all";
 }
 
+// Strip tour names/subtitles for grouping (e.g. "Sombr: The Tour" → "sombr")
+const normalizeForGroup = (s: string) =>
+  s.split(/[:\-–—|]/)[0].trim().toLowerCase();
+
 // Group concerts by same artist + venue
 function groupConcerts(concerts: Concert[]): { primary: Concert; extras: Concert[] }[] {
   const groups: Map<string, Concert[]> = new Map();
 
   for (const c of concerts) {
-    const key = `${c.artist.toLowerCase().trim()}|${c.venue.toLowerCase().trim()}`;
+    const key = `${normalizeForGroup(c.artist)}|${c.venue.toLowerCase().trim()}`;
     if (!groups.has(key)) {
       groups.set(key, []);
     }
