@@ -1,17 +1,20 @@
-import { Music, RefreshCw, Download, Trash2 } from "lucide-react";
+import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles } from "lucide-react";
 import { triggerScrape } from "@/lib/api/concerts";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import type { EventType } from "@/types/concert";
 
 interface HeaderProps {
   selectedIds: string[];
   onDelete: () => void;
   onExport: () => void;
   deleting: boolean;
+  filter: EventType | "all";
+  onFilterChange: (f: EventType | "all") => void;
 }
 
-export function Header({ selectedIds, onDelete, onExport, deleting }: HeaderProps) {
+export function Header({ selectedIds, onDelete, onExport, deleting, filter, onFilterChange }: HeaderProps) {
   const [scraping, setScraping] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -51,6 +54,28 @@ export function Header({ selectedIds, onDelete, onExport, deleting }: HeaderProp
               Every upcoming show in Stockholm
             </p>
           </div>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-1">
+          {([
+            { value: "all" as const, label: "All", icon: Sparkles },
+            { value: "concert" as const, label: "Concerts", icon: Music },
+            { value: "comedy" as const, label: "Comedy", icon: Laugh },
+          ]).map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => onFilterChange(value)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                filter === value
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="flex items-center gap-2">

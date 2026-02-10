@@ -14,6 +14,7 @@ interface ScrapedConcert {
   ticket_sale_date?: string;
   tickets_available?: boolean;
   image_url?: string;
+  event_type: string;
   source: string;
   source_url: string;
 }
@@ -21,7 +22,8 @@ interface ScrapedConcert {
 async function scrapeSource(
   apiKey: string,
   url: string,
-  sourceName: string
+  sourceName: string,
+  eventCategory: string
 ): Promise<ScrapedConcert[]> {
   console.log(`Scraping ${sourceName}: ${url}`);
 
@@ -52,6 +54,12 @@ async function scrapeSource(
       return [];
     }
 
+    // Check if this is an empty page (Cirkus pagination end)
+    if (markdown.includes("Inga evenemang hittades")) {
+      console.log(`${sourceName} page is empty (Inga evenemang hittades)`);
+      return [];
+    }
+
     console.log(`Got ${markdown.length} chars from ${sourceName}`);
 
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
@@ -59,6 +67,10 @@ async function scrapeSource(
       console.error("LOVABLE_API_KEY not set");
       return [];
     }
+
+    const categoryPrompt = eventCategory === "comedy"
+      ? `You are a comedy/stand-up event data extractor for Stockholm, Sweden. Extract ONLY stand-up comedy shows, comedy specials, and humorous live performances. EXCLUDE: music concerts, theater plays, musicals, sports.`
+      : `You are a concert data extractor for Stockholm, Sweden. Extract ONLY music concerts and live music performances. EXCLUDE: sports events, comedy shows, theater, conferences, exhibitions, family shows, musicals unless they are clearly a music concert. INCLUDE: concerts, live music, DJ sets, music festivals, band performances, solo artist shows, orchestra/symphony concerts.`;
 
     const aiResponse = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -73,25 +85,32 @@ async function scrapeSource(
           messages: [
             {
               role: "system",
-              content: `You are a concert data extractor for Stockholm, Sweden. Given markdown from a venue/ticketing website, extract ONLY music concerts and live music performances. 
+              content: `${categoryPrompt}
 
-EXCLUDE: sports events (football, hockey, etc.), comedy shows, theater, conferences, exhibitions, family shows, musicals unless they are clearly a music concert.
+IMPORTANT: Clean up artist/performer names. Remove tour names, subtitles, and extra descriptions from the artist field. For example:
+- "5 Seconds of Summer: EVERYONE'S A STAR! WORLD TOUR" → "5 Seconds of Summer"
+- "Dave – The Boy Who Played the Harp Tour" → "Dave"
+- "Bilind Ibrahim - Live in Concert" → "Bilind Ibrahim"
 
-INCLUDE: concerts, live music, DJ sets, music festivals, band performances, solo artist shows, orchestra/symphony concerts.
+Also normalize venue names to their short form:
+- "Avicii Arena, Stockholm" → "Avicii Arena"
+- "Södra Teatern – Kägelbanan" → "Södra Teatern"
+- "Södra Teatern – Stora Scen" → "Södra Teatern"
+- "Hovet, Stockholm" → "Hovet"
 
 Return a JSON array with these fields:
-- artist: string (performer/band name — clean it up, no extra text)
-- venue: string (venue name in Stockholm)  
+- artist: string (clean performer/band name)
+- venue: string (normalized venue name)
 - date: string (ISO 8601 datetime. Current year is 2026. If no time given, use 19:00)
 - ticket_url: string or null (full URL to buy tickets)
 - tickets_available: boolean (true if on sale)
-- image_url: string or null (full URL to artist/event image if found in the markdown)
+- image_url: string or null (full URL to artist/event image if found)
 
-Return ONLY valid JSON array. No explanation. If no concerts found, return [].`,
+Return ONLY valid JSON array. No explanation. If no events found, return [].`,
             },
             {
               role: "user",
-              content: `Extract ONLY music concerts from this ${sourceName} page. Source URL: ${url}\n\n${markdown.substring(0, 20000)}`,
+              content: `Extract events from this ${sourceName} page. Source URL: ${url}\n\n${markdown.substring(0, 20000)}`,
             },
           ],
           temperature: 0.1,
@@ -104,13 +123,13 @@ Return ONLY valid JSON array. No explanation. If no concerts found, return [].`,
 
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.log(`No concerts parsed from ${sourceName}`);
+      console.log(`No events parsed from ${sourceName}`);
       return [];
     }
 
     const parsed: any[] = JSON.parse(jsonMatch[0]);
-    console.log(`Parsed ${parsed.length} concerts from ${sourceName}`);
-    
+    console.log(`Parsed ${parsed.length} events from ${sourceName}`);
+
     return parsed.map((c: any) => ({
       artist: c.artist || "Unknown",
       venue: c.venue || sourceName,
@@ -119,6 +138,7 @@ Return ONLY valid JSON array. No explanation. If no concerts found, return [].`,
       ticket_sale_date: c.ticket_sale_date || null,
       tickets_available: c.tickets_available || false,
       image_url: c.image_url || null,
+      event_type: eventCategory,
       source: sourceName,
       source_url: url,
     }));
@@ -126,6 +146,35 @@ Return ONLY valid JSON array. No explanation. If no concerts found, return [].`,
     console.error(`Error scraping ${sourceName}:`, err);
     return [];
   }
+}
+
+// Paginate a source until empty page
+async function scrapePaginated(
+  apiKey: string,
+  baseUrl: string,
+  sourceName: string,
+  eventCategory: string,
+  maxPages: number = 10
+): Promise<ScrapedConcert[]> {
+  const all: ScrapedConcert[] = [];
+
+  // Page 1 is the base URL
+  const firstPage = await scrapeSource(apiKey, baseUrl, sourceName, eventCategory);
+  if (firstPage.length === 0) return all;
+  all.push(...firstPage);
+
+  // Pages 2+
+  for (let page = 2; page <= maxPages; page++) {
+    const url = `${baseUrl}page/${page}/`;
+    const results = await scrapeSource(apiKey, url, sourceName, eventCategory);
+    if (results.length === 0) {
+      console.log(`${sourceName} pagination ended at page ${page}`);
+      break;
+    }
+    all.push(...results);
+  }
+
+  return all;
 }
 
 async function searchArtistImage(
@@ -183,39 +232,49 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Scrape multiple pages from each source for better coverage
-    const sources = [
-      { url: "https://stockholmlive.com/evenemang/", name: "Stockholm Live" },
-      { url: "https://stockholmlive.com/evenemang/page/2/", name: "Stockholm Live" },
-      { url: "https://stockholmlive.com/evenemang/page/3/", name: "Stockholm Live" },
-      { url: "https://cirkus.se/sv/evenemang/", name: "Cirkus" },
-      { url: "https://cirkus.se/sv/evenemang/page/2/", name: "Cirkus" },
-      { url: "https://cirkus.se/sv/evenemang/page/3/", name: "Cirkus" },
-      { url: "https://cirkus.se/sv/evenemang/page/4/", name: "Cirkus" },
-      { url: "https://www.livenation.se/", name: "Live Nation" },
-      { url: "https://www.livenation.se/venue/2702/friends-arena-evenemang", name: "Live Nation" },
-      { url: "https://www.livenation.se/venue/59539/avicii-arena-evenemang", name: "Live Nation" },
-    ];
+    // Concert sources with dynamic pagination
+    const concertResults = await Promise.allSettled([
+      scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10),
+      scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/", "Stockholm Live", "concert"),
+      scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/2/", "Stockholm Live", "concert"),
+      scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/3/", "Stockholm Live", "concert"),
+      scrapeSource(firecrawlKey, "https://www.livenation.se/", "Live Nation", "concert"),
+      scrapeSource(firecrawlKey, "https://www.livenation.se/venue/2702/friends-arena-evenemang", "Live Nation", "concert"),
+      scrapeSource(firecrawlKey, "https://www.livenation.se/venue/59539/avicii-arena-evenemang", "Live Nation", "concert"),
+    ]);
 
-    const results = await Promise.allSettled(
-      sources.map((s) => scrapeSource(firecrawlKey, s.url, s.name))
-    );
+    // Comedy sources
+    const comedyResults = await Promise.allSettled([
+      scrapeSource(firecrawlKey, "https://www.nojesteatern.se/program/", "Nöjesteatern", "comedy"),
+      scrapeSource(firecrawlKey, "https://www.hyvens.se/program/", "Hyvens", "comedy"),
+      scrapeSource(firecrawlKey, "https://www.livenation.se/search?query=comedy+stockholm", "Live Nation", "comedy"),
+    ]);
 
     const allConcerts: ScrapedConcert[] = [];
-    for (const result of results) {
+    for (const result of [...concertResults, ...comedyResults]) {
       if (result.status === "fulfilled") {
         allConcerts.push(...result.value);
       }
     }
 
-    console.log(`Total concerts scraped: ${allConcerts.length}`);
+    console.log(`Total events scraped: ${allConcerts.length}`);
 
-    // For concerts without images, try to find artist images
+    // Deduplicate by normalized artist+venue+date before upserting
+    const seen = new Map<string, ScrapedConcert>();
+    for (const c of allConcerts) {
+      const key = `${c.artist.toLowerCase().trim()}|${c.venue.toLowerCase().trim()}|${c.date}`;
+      if (!seen.has(key)) {
+        seen.set(key, c);
+      }
+    }
+    const dedupedConcerts = [...seen.values()];
+    console.log(`After dedup: ${dedupedConcerts.length} unique events`);
+
+    // For events without images, try to find artist images
     if (lovableApiKey) {
-      const noImageConcerts = allConcerts.filter((c) => !c.image_url);
+      const noImageConcerts = dedupedConcerts.filter((c) => !c.image_url);
       const uniqueArtists = [...new Set(noImageConcerts.map((c) => c.artist))];
-      
-      // Limit to avoid timeout
+
       const artistsToSearch = uniqueArtists.slice(0, 15);
       const imageResults = await Promise.allSettled(
         artistsToSearch.map(async (artist) => {
@@ -231,7 +290,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      for (const c of allConcerts) {
+      for (const c of dedupedConcerts) {
         if (!c.image_url && imageMap.has(c.artist)) {
           c.image_url = imageMap.get(c.artist)!;
         }
@@ -240,7 +299,7 @@ Deno.serve(async (req) => {
 
     // Upsert
     let inserted = 0;
-    for (const concert of allConcerts) {
+    for (const concert of dedupedConcerts) {
       const { error } = await supabase.from("concerts").upsert(
         {
           artist: concert.artist,
@@ -250,6 +309,7 @@ Deno.serve(async (req) => {
           ticket_sale_date: concert.ticket_sale_date,
           tickets_available: concert.tickets_available,
           image_url: concert.image_url,
+          event_type: concert.event_type,
           source: concert.source,
           source_url: concert.source_url,
         },
@@ -266,7 +326,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Scraped ${allConcerts.length} concerts from ${sources.length} pages, upserted ${inserted}`,
+        message: `Scraped ${allConcerts.length} events, deduped to ${dedupedConcerts.length}, upserted ${inserted}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
