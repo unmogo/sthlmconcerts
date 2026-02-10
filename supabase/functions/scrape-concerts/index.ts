@@ -261,9 +261,12 @@ Deno.serve(async (req) => {
 
     // Deduplicate by normalized artist+venue+date before upserting
     const normalize = (s: string) => s.toLowerCase().replace(/[^a-zåäö0-9]/g, "");
+    // Strip tour names / subtitles for dedup key (e.g. "Sombr: The Tour" → "sombr")
+    const normalizeArtist = (s: string) =>
+      normalize(s.split(/[:\-–—|]/)[0].trim());
     const seen = new Map<string, ScrapedConcert>();
     for (const c of allConcerts) {
-      const key = `${normalize(c.artist)}|${normalize(c.venue)}|${c.date}`;
+      const key = `${normalizeArtist(c.artist)}|${normalize(c.venue)}|${c.date}`;
       if (!seen.has(key)) {
         seen.set(key, c);
       } else {
