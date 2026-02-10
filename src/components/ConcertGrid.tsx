@@ -2,12 +2,47 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchConcerts } from "@/lib/api/concerts";
 import { ConcertCard } from "./ConcertCard";
 import { Loader2, Music } from "lucide-react";
+import type { Concert } from "@/types/concert";
+import { useMemo } from "react";
 
-export function ConcertGrid() {
+interface ConcertGridProps {
+  selectedIds: string[];
+  onToggleSelect: (id: string) => void;
+}
+
+// Group concerts by same artist + venue
+function groupConcerts(concerts: Concert[]): { primary: Concert; extras: Concert[] }[] {
+  const groups: Map<string, Concert[]> = new Map();
+
+  for (const c of concerts) {
+    const key = `${c.artist.toLowerCase().trim()}|${c.venue.toLowerCase().trim()}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(c);
+  }
+
+  const result: { primary: Concert; extras: Concert[] }[] = [];
+  for (const group of groups.values()) {
+    group.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    result.push({ primary: group[0], extras: group.slice(1) });
+  }
+
+  // Sort by first date
+  result.sort((a, b) => new Date(a.primary.date).getTime() - new Date(b.primary.date).getTime());
+  return result;
+}
+
+export function ConcertGrid({ selectedIds, onToggleSelect }: ConcertGridProps) {
   const { data: concerts, isLoading, error } = useQuery({
     queryKey: ["concerts"],
     queryFn: fetchConcerts,
   });
+
+  const grouped = useMemo(() => {
+    if (!concerts) return [];
+    return groupConcerts(concerts);
+  }, [concerts]);
 
   if (isLoading) {
     return (
@@ -26,20 +61,27 @@ export function ConcertGrid() {
     );
   }
 
-  if (!concerts || concerts.length === 0) {
+  if (grouped.length === 0) {
     return (
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Music className="h-12 w-12 text-primary/40" />
         <p className="text-lg font-medium">No upcoming concerts found</p>
-        <p className="text-sm">Run a scrape to populate the database</p>
+        <p className="text-sm">Click Refresh to scrape the latest events</p>
       </div>
     );
   }
 
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {concerts.map((concert, i) => (
-        <ConcertCard key={concert.id} concert={concert} index={i} />
+      {grouped.map(({ primary, extras }, i) => (
+        <ConcertCard
+          key={primary.id}
+          concert={primary}
+          extraDates={extras}
+          index={i}
+          selected={selectedIds.includes(primary.id)}
+          onToggleSelect={onToggleSelect}
+        />
       ))}
     </div>
   );

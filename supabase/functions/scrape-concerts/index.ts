@@ -34,9 +34,9 @@ async function scrapeSource(
       },
       body: JSON.stringify({
         url,
-        formats: ["markdown"],
+        formats: ["markdown", "links"],
         onlyMainContent: true,
-        waitFor: 3000,
+        waitFor: 5000,
       }),
     });
 
@@ -52,10 +52,11 @@ async function scrapeSource(
       return [];
     }
 
-    // Use AI to parse the markdown into structured concert data
+    console.log(`Got ${markdown.length} chars from ${sourceName}`);
+
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
-      console.error("LOVABLE_API_KEY not set, cannot parse concerts");
+      console.error("LOVABLE_API_KEY not set");
       return [];
     }
 
@@ -72,20 +73,25 @@ async function scrapeSource(
           messages: [
             {
               role: "system",
-              content: `You are a concert data extractor. Given markdown content from a Swedish concert venue website, extract all upcoming concerts/events. Return a JSON array of objects with these fields:
-- artist: string (performer/band name)
-- venue: string (venue name, default to "${sourceName}" if not found)  
-- date: string (ISO 8601 datetime, best guess if only partial date given. Use 2025/2026 for upcoming dates)
-- ticket_url: string or null (link to buy tickets if found)
-- tickets_available: boolean (true if tickets seem to be on sale)
-- image_url: string or null (artist/event image URL if found)
+              content: `You are a concert data extractor for Stockholm, Sweden. Given markdown from a venue/ticketing website, extract ONLY music concerts and live music performances. 
 
-Only return valid JSON array. No explanation. If no concerts found, return [].
-Current year is 2026, month is February.`,
+EXCLUDE: sports events (football, hockey, etc.), comedy shows, theater, conferences, exhibitions, family shows, musicals unless they are clearly a music concert.
+
+INCLUDE: concerts, live music, DJ sets, music festivals, band performances, solo artist shows, orchestra/symphony concerts.
+
+Return a JSON array with these fields:
+- artist: string (performer/band name — clean it up, no extra text)
+- venue: string (venue name in Stockholm)  
+- date: string (ISO 8601 datetime. Current year is 2026. If no time given, use 19:00)
+- ticket_url: string or null (full URL to buy tickets)
+- tickets_available: boolean (true if on sale)
+- image_url: string or null (full URL to artist/event image if found in the markdown)
+
+Return ONLY valid JSON array. No explanation. If no concerts found, return [].`,
             },
             {
               role: "user",
-              content: `Extract concerts from this ${sourceName} page:\n\n${markdown.substring(0, 15000)}`,
+              content: `Extract ONLY music concerts from this ${sourceName} page. Source URL: ${url}\n\n${markdown.substring(0, 20000)}`,
             },
           ],
           temperature: 0.1,
@@ -96,7 +102,6 @@ Current year is 2026, month is February.`,
     const aiData = await aiResponse.json();
     const content = aiData?.choices?.[0]?.message?.content || "[]";
 
-    // Parse JSON from AI response (may have markdown code fences)
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       console.log(`No concerts parsed from ${sourceName}`);
@@ -104,6 +109,8 @@ Current year is 2026, month is February.`,
     }
 
     const parsed: any[] = JSON.parse(jsonMatch[0]);
+    console.log(`Parsed ${parsed.length} concerts from ${sourceName}`);
+    
     return parsed.map((c: any) => ({
       artist: c.artist || "Unknown",
       venue: c.venue || sourceName,
@@ -121,6 +128,42 @@ Current year is 2026, month is February.`,
   }
 }
 
+async function searchArtistImage(
+  artistName: string,
+  lovableApiKey: string
+): Promise<string | null> {
+  try {
+    const aiResponse = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "user",
+              content: `What is a commonly used press photo or Wikipedia image URL for the music artist "${artistName}"? If you know a real URL to their image (from Wikipedia, their official site, or a major music platform), return ONLY the URL. If you don't know a real URL, respond with "none".`,
+            },
+          ],
+          temperature: 0,
+        }),
+      }
+    );
+    const data = await aiResponse.json();
+    const url = data?.choices?.[0]?.message?.content?.trim();
+    if (url && url.startsWith("http") && !url.includes(" ")) {
+      return url;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -135,15 +178,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Scrape all sources in parallel
+    // Scrape multiple pages from each source for better coverage
     const sources = [
       { url: "https://stockholmlive.com/evenemang/", name: "Stockholm Live" },
+      { url: "https://stockholmlive.com/evenemang/page/2/", name: "Stockholm Live" },
+      { url: "https://stockholmlive.com/evenemang/page/3/", name: "Stockholm Live" },
       { url: "https://cirkus.se/sv/evenemang/", name: "Cirkus" },
+      { url: "https://cirkus.se/sv/evenemang/page/2/", name: "Cirkus" },
+      { url: "https://cirkus.se/sv/evenemang/page/3/", name: "Cirkus" },
+      { url: "https://cirkus.se/sv/evenemang/page/4/", name: "Cirkus" },
       { url: "https://www.livenation.se/", name: "Live Nation" },
+      { url: "https://www.livenation.se/venue/2702/friends-arena-evenemang", name: "Live Nation" },
+      { url: "https://www.livenation.se/venue/59539/avicii-arena-evenemang", name: "Live Nation" },
     ];
 
     const results = await Promise.allSettled(
@@ -159,7 +210,35 @@ Deno.serve(async (req) => {
 
     console.log(`Total concerts scraped: ${allConcerts.length}`);
 
-    // Upsert concerts (deduplicate by artist+venue+date)
+    // For concerts without images, try to find artist images
+    if (lovableApiKey) {
+      const noImageConcerts = allConcerts.filter((c) => !c.image_url);
+      const uniqueArtists = [...new Set(noImageConcerts.map((c) => c.artist))];
+      
+      // Limit to avoid timeout
+      const artistsToSearch = uniqueArtists.slice(0, 15);
+      const imageResults = await Promise.allSettled(
+        artistsToSearch.map(async (artist) => {
+          const url = await searchArtistImage(artist, lovableApiKey);
+          return { artist, url };
+        })
+      );
+
+      const imageMap = new Map<string, string>();
+      for (const r of imageResults) {
+        if (r.status === "fulfilled" && r.value.url) {
+          imageMap.set(r.value.artist, r.value.url);
+        }
+      }
+
+      for (const c of allConcerts) {
+        if (!c.image_url && imageMap.has(c.artist)) {
+          c.image_url = imageMap.get(c.artist)!;
+        }
+      }
+    }
+
+    // Upsert
     let inserted = 0;
     for (const concert of allConcerts) {
       const { error } = await supabase.from("concerts").upsert(
@@ -178,7 +257,7 @@ Deno.serve(async (req) => {
       );
 
       if (error) {
-        console.error(`Error upserting concert:`, error.message);
+        console.error(`Error upserting:`, error.message);
       } else {
         inserted++;
       }
@@ -187,7 +266,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Scraped ${allConcerts.length} concerts, upserted ${inserted}`,
+        message: `Scraped ${allConcerts.length} concerts from ${sources.length} pages, upserted ${inserted}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
