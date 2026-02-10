@@ -15,11 +15,26 @@ interface ConcertGridProps {
 const normalizeForGroup = (s: string) =>
   s.split(/[:\-–—|]/)[0].trim().toLowerCase();
 
-// Group concerts by same artist + venue
+// Deduplicate concerts: same normalized artist + venue + exact date → keep one (shortest name)
+function deduplicateConcerts(concerts: Concert[]): Concert[] {
+  const seen = new Map<string, Concert>();
+  for (const c of concerts) {
+    const dateKey = new Date(c.date).toISOString();
+    const key = `${normalizeForGroup(c.artist)}|${c.venue.toLowerCase().trim()}|${dateKey}`;
+    const existing = seen.get(key);
+    if (!existing || c.artist.length < existing.artist.length) {
+      seen.set(key, c);
+    }
+  }
+  return [...seen.values()];
+}
+
+// Group concerts by same artist + venue (different dates only)
 function groupConcerts(concerts: Concert[]): { primary: Concert; extras: Concert[] }[] {
+  const deduped = deduplicateConcerts(concerts);
   const groups: Map<string, Concert[]> = new Map();
 
-  for (const c of concerts) {
+  for (const c of deduped) {
     const key = `${normalizeForGroup(c.artist)}|${c.venue.toLowerCase().trim()}`;
     if (!groups.has(key)) {
       groups.set(key, []);

@@ -32,6 +32,28 @@ export async function updateConcert(id: string, updates: Partial<Concert>): Prom
   if (error) throw error;
 }
 
+export async function addConcert(concert: {
+  artist: string;
+  venue: string;
+  date: string;
+  ticket_url?: string | null;
+  image_url?: string | null;
+  event_type?: string;
+}): Promise<void> {
+  const { error } = await supabase.functions.invoke("manage-concerts", {
+    body: { action: "insert", concert },
+  });
+  if (error) throw error;
+}
+
+export async function scrapeUrl(url: string): Promise<any> {
+  const { data, error } = await supabase.functions.invoke("manage-concerts", {
+    body: { action: "scrape-url", url },
+  });
+  if (error) throw error;
+  return data?.concert || null;
+}
+
 export function exportConcertsToCSV(concerts: Concert[]): string {
   const headers = ["Artist", "Venue", "Date", "Ticket URL", "Tickets Available", "Image URL", "Source"];
   const rows = concerts.map((c) => [

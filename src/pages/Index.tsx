@@ -1,6 +1,7 @@
 import { Header } from "@/components/Header";
 import { ConcertGrid } from "@/components/ConcertGrid";
 import { ExportDialog } from "@/components/ExportDialog";
+import { AddConcertDialog } from "@/components/AddConcertDialog";
 import { useState, useCallback } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { fetchConcerts, deleteConcerts } from "@/lib/api/concerts";
@@ -10,6 +11,7 @@ import type { EventType } from "@/types/concert";
 const Index = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showExport, setShowExport] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState<EventType | "all">("all");
   const queryClient = useQueryClient();
@@ -31,18 +33,11 @@ const Index = () => {
     setDeleting(true);
     try {
       await deleteConcerts(selectedIds);
-      toast({
-        title: "Deleted",
-        description: `Removed ${selectedIds.length} event(s)`,
-      });
+      toast({ title: "Deleted", description: `Removed ${selectedIds.length} event(s)` });
       setSelectedIds([]);
       queryClient.invalidateQueries({ queryKey: ["concerts"] });
-    } catch (err) {
-      toast({
-        title: "Delete failed",
-        description: "Could not delete events. Try again.",
-        variant: "destructive",
-      });
+    } catch {
+      toast({ title: "Delete failed", description: "Could not delete events.", variant: "destructive" });
     } finally {
       setDeleting(false);
     }
@@ -54,6 +49,7 @@ const Index = () => {
         selectedIds={selectedIds}
         onDelete={handleDelete}
         onExport={() => setShowExport(true)}
+        onAdd={() => setShowAdd(true)}
         deleting={deleting}
         filter={filter}
         onFilterChange={setFilter}
@@ -72,12 +68,8 @@ const Index = () => {
         <ConcertGrid selectedIds={selectedIds} onToggleSelect={handleToggleSelect} filter={filter} />
       </main>
 
-      {showExport && (
-        <ExportDialog
-          concerts={concerts}
-          onClose={() => setShowExport(false)}
-        />
-      )}
+      {showExport && <ExportDialog concerts={concerts} onClose={() => setShowExport(false)} />}
+      {showAdd && <AddConcertDialog onClose={() => setShowAdd(false)} />}
     </div>
   );
 };
