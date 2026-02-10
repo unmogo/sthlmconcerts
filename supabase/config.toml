@@ -1,1 +1,4 @@
 project_id = "bdbvyayxzlyxjzeiyfwh"
+
+[functions.scrape-concerts]
+verify_jwt = false
