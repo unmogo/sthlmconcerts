@@ -260,11 +260,18 @@ Deno.serve(async (req) => {
     console.log(`Total events scraped: ${allConcerts.length}`);
 
     // Deduplicate by normalized artist+venue+date before upserting
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-zåäö0-9]/g, "");
     const seen = new Map<string, ScrapedConcert>();
     for (const c of allConcerts) {
-      const key = `${c.artist.toLowerCase().trim()}|${c.venue.toLowerCase().trim()}|${c.date}`;
+      const key = `${normalize(c.artist)}|${normalize(c.venue)}|${c.date}`;
       if (!seen.has(key)) {
         seen.set(key, c);
+      } else {
+        // Keep the entry with shorter artist name (cleaner)
+        const existing = seen.get(key)!;
+        if (c.artist.length < existing.artist.length) {
+          seen.set(key, c);
+        }
       }
     }
     const dedupedConcerts = [...seen.values()];

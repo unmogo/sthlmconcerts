@@ -25,6 +25,13 @@ export async function deleteConcerts(ids: string[]): Promise<void> {
   if (error) throw error;
 }
 
+export async function updateConcert(id: string, updates: Partial<Concert>): Promise<void> {
+  const { error } = await supabase.functions.invoke("manage-concerts", {
+    body: { action: "update", id, updates },
+  });
+  if (error) throw error;
+}
+
 export function exportConcertsToCSV(concerts: Concert[]): string {
   const headers = ["Artist", "Venue", "Date", "Ticket URL", "Tickets Available", "Image URL", "Source"];
   const rows = concerts.map((c) => [
