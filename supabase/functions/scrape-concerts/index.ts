@@ -241,12 +241,6 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Concert sources
-    const concertSources: { url: string; name: string; category: string }[] = [
-      // Cirkus (paginated)
-      // handled separately below
-    ];
-
     // Static concert pages
     const staticConcertUrls = [
       { url: "https://stockholmlive.com/evenemang/", name: "Stockholm Live" },
@@ -256,11 +250,17 @@ Deno.serve(async (req) => {
       { url: "https://www.axs.com/se/venues/1702/avicii-arena", name: "AXS" },
       { url: "https://www.axs.com/se/venues/31697/hovet", name: "AXS" },
       { url: "https://www.axs.com/se/venues/141684/strawberry-arena", name: "AXS" },
-      // Konserthuset
-      { url: "https://www.konserthuset.se/program-och-biljetter/kalender/", name: "Konserthuset" },
-      // Kulturhuset Stadsteatern
-      { url: "https://kulturhusetstadsteatern.se/konserter", name: "Kulturhuset" },
     ];
+
+    // Konserthuset - month-based calendar, scrape each month through Dec 2026
+    const konserthusetMonths = [
+      "2026-02", "2026-03", "2026-04", "2026-05", "2026-06",
+      "2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12",
+    ];
+    const konserthusetUrls = konserthusetMonths.map((m) => ({
+      url: `https://www.konserthuset.se/program-och-biljetter/kalender/?month=${m}`,
+      name: "Konserthuset",
+    }));
 
     // Live Nation - paginate through Stockholm events (city 65969, country 212)
     const livenationPages: { url: string; name: string }[] = [];
@@ -275,7 +275,10 @@ Deno.serve(async (req) => {
       scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10),
       // Gröna Lund - needs longer wait for JS rendering, no onlyMainContent
       scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts#filter=Stora%20Scen,Lilla%20Scen", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }),
+      // Kulturhuset Stadsteatern - JS rendered
+      scrapeSource(firecrawlKey, "https://kulturhusetstadsteatern.se/konserter", "Kulturhuset", "concert", { waitFor: 8000, onlyMainContent: false }),
       ...staticConcertUrls.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
+      ...konserthusetUrls.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert", { waitFor: 5000 })),
       ...livenationPages.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
     ]);
 
