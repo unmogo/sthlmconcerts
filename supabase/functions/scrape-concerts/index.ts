@@ -23,7 +23,8 @@ async function scrapeSource(
   apiKey: string,
   url: string,
   sourceName: string,
-  eventCategory: string
+  eventCategory: string,
+  options?: { waitFor?: number; onlyMainContent?: boolean }
 ): Promise<ScrapedConcert[]> {
   console.log(`Scraping ${sourceName}: ${url}`);
 
@@ -37,8 +38,8 @@ async function scrapeSource(
       body: JSON.stringify({
         url,
         formats: ["markdown", "links"],
-        onlyMainContent: true,
-        waitFor: 5000,
+        onlyMainContent: options?.onlyMainContent ?? true,
+        waitFor: options?.waitFor ?? 5000,
       }),
     });
 
@@ -49,6 +50,12 @@ async function scrapeSource(
     }
 
     const markdown = data?.data?.markdown || data?.markdown || "";
+    const links = data?.data?.links || data?.links || [];
+    // Extract image links to pass to AI
+    const imageLinks = Array.isArray(links)
+      ? links.filter((l: string) => /\.(jpg|jpeg|png|webp|avif)/i.test(l))
+      : [];
+
     if (!markdown) {
       console.log(`No content from ${sourceName}`);
       return [];
@@ -104,13 +111,15 @@ Return a JSON array with these fields:
 - date: string (ISO 8601 datetime. Current year is 2026. If no time given, use 19:00)
 - ticket_url: string or null (full URL to buy tickets)
 - tickets_available: boolean (true if on sale)
-- image_url: string or null (full URL to artist/event image if found)
+- image_url: string or null (full URL to artist/event image if found in the content or image links below)
+
+IMPORTANT: Match artist images from the image links provided below. Look for image filenames that contain or relate to artist names.
 
 Return ONLY valid JSON array. No explanation. If no events found, return [].`,
             },
             {
               role: "user",
-              content: `Extract events from this ${sourceName} page. Source URL: ${url}\n\n${markdown.substring(0, 20000)}`,
+              content: `Extract events from this ${sourceName} page. Source URL: ${url}\n\n${markdown.substring(0, 18000)}${imageLinks.length > 0 ? `\n\n--- IMAGE LINKS FOUND ON PAGE ---\n${imageLinks.slice(0, 100).join("\n")}` : ""}`,
             },
           ],
           temperature: 0.1,
@@ -243,8 +252,6 @@ Deno.serve(async (req) => {
       { url: "https://stockholmlive.com/evenemang/", name: "Stockholm Live" },
       { url: "https://stockholmlive.com/evenemang/page/2/", name: "Stockholm Live" },
       { url: "https://stockholmlive.com/evenemang/page/3/", name: "Stockholm Live" },
-      // Gröna Lund
-      { url: "https://www.gronalund.com/en/concerts#filter=Stora%20Scen,Lilla%20Scen", name: "Gröna Lund" },
       // AXS Stockholm
       { url: "https://www.axs.com/se/venues/1702/avicii-arena", name: "AXS" },
       { url: "https://www.axs.com/se/venues/31697/hovet", name: "AXS" },
@@ -266,6 +273,8 @@ Deno.serve(async (req) => {
 
     const concertResults = await Promise.allSettled([
       scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10),
+      // Gröna Lund - needs longer wait for JS rendering, no onlyMainContent
+      scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts#filter=Stora%20Scen,Lilla%20Scen", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }),
       ...staticConcertUrls.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
       ...livenationPages.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
     ]);
