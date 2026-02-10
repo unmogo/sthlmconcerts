@@ -232,15 +232,42 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Concert sources with dynamic pagination
+    // Concert sources
+    const concertSources: { url: string; name: string; category: string }[] = [
+      // Cirkus (paginated)
+      // handled separately below
+    ];
+
+    // Static concert pages
+    const staticConcertUrls = [
+      { url: "https://stockholmlive.com/evenemang/", name: "Stockholm Live" },
+      { url: "https://stockholmlive.com/evenemang/page/2/", name: "Stockholm Live" },
+      { url: "https://stockholmlive.com/evenemang/page/3/", name: "Stockholm Live" },
+      // Gröna Lund
+      { url: "https://www.gronalund.com/en/concerts#filter=Stora%20Scen,Lilla%20Scen", name: "Gröna Lund" },
+      // AXS Stockholm
+      { url: "https://www.axs.com/se/venues/1702/avicii-arena", name: "AXS" },
+      { url: "https://www.axs.com/se/venues/31697/hovet", name: "AXS" },
+      { url: "https://www.axs.com/se/venues/141684/strawberry-arena", name: "AXS" },
+      // Konserthuset
+      { url: "https://www.konserthuset.se/program-och-biljetter/kalender/", name: "Konserthuset" },
+      // Kulturhuset Stadsteatern
+      { url: "https://kulturhusetstadsteatern.se/konserter", name: "Kulturhuset" },
+    ];
+
+    // Live Nation - paginate through Stockholm events (city 65969, country 212)
+    const livenationPages: { url: string; name: string }[] = [];
+    for (let p = 1; p <= 15; p++) {
+      livenationPages.push({
+        url: `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`,
+        name: "Live Nation",
+      });
+    }
+
     const concertResults = await Promise.allSettled([
       scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10),
-      scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/", "Stockholm Live", "concert"),
-      scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/2/", "Stockholm Live", "concert"),
-      scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/3/", "Stockholm Live", "concert"),
-      scrapeSource(firecrawlKey, "https://www.livenation.se/", "Live Nation", "concert"),
-      scrapeSource(firecrawlKey, "https://www.livenation.se/venue/2702/friends-arena-evenemang", "Live Nation", "concert"),
-      scrapeSource(firecrawlKey, "https://www.livenation.se/venue/59539/avicii-arena-evenemang", "Live Nation", "concert"),
+      ...staticConcertUrls.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
+      ...livenationPages.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
     ]);
 
     // Comedy sources

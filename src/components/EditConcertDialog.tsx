@@ -16,6 +16,7 @@ interface EditConcertDialogProps {
 export function EditConcertDialog({ concert, onClose }: EditConcertDialogProps) {
   const [artist, setArtist] = useState(concert.artist);
   const [venue, setVenue] = useState(concert.venue);
+  const [date, setDate] = useState(concert.date.slice(0, 16)); // datetime-local format
   const [ticketUrl, setTicketUrl] = useState(concert.ticket_url || "");
   const [imageUrl, setImageUrl] = useState(concert.image_url || "");
   const [saving, setSaving] = useState(false);
@@ -28,6 +29,7 @@ export function EditConcertDialog({ concert, onClose }: EditConcertDialogProps) 
       await updateConcert(concert.id, {
         artist,
         venue,
+        date: new Date(date).toISOString(),
         ticket_url: ticketUrl || null,
         image_url: imageUrl || null,
       });
@@ -55,6 +57,10 @@ export function EditConcertDialog({ concert, onClose }: EditConcertDialogProps) 
           <div>
             <Label htmlFor="venue">Venue</Label>
             <Input id="venue" value={venue} onChange={(e) => setVenue(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="date">Date & Time</Label>
+            <Input id="date" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
             <Label htmlFor="ticket_url">Ticket URL</Label>

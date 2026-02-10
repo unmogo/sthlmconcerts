@@ -1,4 +1,4 @@
-import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles } from "lucide-react";
+import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus } from "lucide-react";
 import { triggerScrape } from "@/lib/api/concerts";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,12 +9,13 @@ interface HeaderProps {
   selectedIds: string[];
   onDelete: () => void;
   onExport: () => void;
+  onAdd: () => void;
   deleting: boolean;
   filter: EventType | "all";
   onFilterChange: (f: EventType | "all") => void;
 }
 
-export function Header({ selectedIds, onDelete, onExport, deleting, filter, onFilterChange }: HeaderProps) {
+export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
   const [scraping, setScraping] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -91,6 +92,14 @@ export function Header({ selectedIds, onDelete, onExport, deleting, filter, onFi
               </button>
             </>
           )}
+
+          <button
+            onClick={onAdd}
+            className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </button>
 
           <button
             onClick={onExport}
