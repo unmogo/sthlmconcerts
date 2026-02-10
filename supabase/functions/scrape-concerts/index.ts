@@ -257,7 +257,7 @@ Deno.serve(async (req) => {
 
     // Live Nation - paginate through Stockholm events (city 65969, country 212)
     const livenationPages: { url: string; name: string }[] = [];
-    for (let p = 1; p <= 15; p++) {
+    for (let p = 1; p <= 50; p++) {
       livenationPages.push({
         url: `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`,
         name: "Live Nation",
@@ -312,7 +312,7 @@ Deno.serve(async (req) => {
       const noImageConcerts = dedupedConcerts.filter((c) => !c.image_url);
       const uniqueArtists = [...new Set(noImageConcerts.map((c) => c.artist))];
 
-      const artistsToSearch = uniqueArtists.slice(0, 15);
+      const artistsToSearch = uniqueArtists.slice(0, 50);
       const imageResults = await Promise.allSettled(
         artistsToSearch.map(async (artist) => {
           const url = await searchArtistImage(artist, lovableApiKey);
