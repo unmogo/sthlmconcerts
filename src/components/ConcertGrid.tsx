@@ -2,12 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchConcerts } from "@/lib/api/concerts";
 import { ConcertCard } from "./ConcertCard";
 import { Loader2, Music } from "lucide-react";
-import type { Concert } from "@/types/concert";
+import type { Concert, EventType } from "@/types/concert";
 import { useMemo } from "react";
 
 interface ConcertGridProps {
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
+  filter: EventType | "all";
 }
 
 // Group concerts by same artist + venue
@@ -33,7 +34,7 @@ function groupConcerts(concerts: Concert[]): { primary: Concert; extras: Concert
   return result;
 }
 
-export function ConcertGrid({ selectedIds, onToggleSelect }: ConcertGridProps) {
+export function ConcertGrid({ selectedIds, onToggleSelect, filter }: ConcertGridProps) {
   const { data: concerts, isLoading, error } = useQuery({
     queryKey: ["concerts"],
     queryFn: fetchConcerts,
@@ -41,8 +42,9 @@ export function ConcertGrid({ selectedIds, onToggleSelect }: ConcertGridProps) {
 
   const grouped = useMemo(() => {
     if (!concerts) return [];
-    return groupConcerts(concerts);
-  }, [concerts]);
+    const filtered = filter === "all" ? concerts : concerts.filter((c) => c.event_type === filter);
+    return groupConcerts(filtered);
+  }, [concerts, filter]);
 
   if (isLoading) {
     return (
