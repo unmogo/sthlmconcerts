@@ -99,11 +99,16 @@ IMPORTANT: Clean up artist/performer names. Remove tour names, subtitles, and ex
 - "Dave – The Boy Who Played the Harp Tour" → "Dave"
 - "Bilind Ibrahim - Live in Concert" → "Bilind Ibrahim"
 
-Also normalize venue names to their short form:
+Also normalize venue names to their short form. Remove city names and sub-venue details:
 - "Avicii Arena, Stockholm" → "Avicii Arena"
 - "Södra Teatern – Kägelbanan" → "Södra Teatern"
 - "Södra Teatern – Stora Scen" → "Södra Teatern"
 - "Hovet, Stockholm" → "Hovet"
+- "Ulriksdals Slott - Solna" → "Ulriksdals Slott"
+- "Cirkus, Stockholm" → "Cirkus"
+- "Gröna Lund" (always use this exact name for Gröna Lund events)
+
+IMPORTANT: When a venue name includes a city suffix (e.g. ", Stockholm", " - Solna"), remove it. When it includes a sub-venue (e.g. "– Stora Scen"), remove it. Use the shortest recognizable venue name.
 
 Return a JSON array with these fields:
 - artist: string (clean performer/band name)
@@ -274,7 +279,7 @@ Deno.serve(async (req) => {
     const concertResults = await Promise.allSettled([
       scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10),
       // Gröna Lund - needs longer wait for JS rendering, no onlyMainContent
-      scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts#filter=Stora%20Scen,Lilla%20Scen", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }),
+      scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }),
       // Kulturhuset Stadsteatern - JS rendered
       scrapeSource(firecrawlKey, "https://kulturhusetstadsteatern.se/konserter", "Kulturhuset", "concert", { waitFor: 8000, onlyMainContent: false }),
       ...staticConcertUrls.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
@@ -298,14 +303,19 @@ Deno.serve(async (req) => {
 
     console.log(`Total events scraped: ${allConcerts.length}`);
 
-    // Deduplicate by normalized artist+venue+date before upserting
+    // Deduplicate by normalized artist+venue+DATE ONLY (ignore time differences)
     const normalize = (s: string) => s.toLowerCase().replace(/[^a-zåäö0-9]/g, "");
     // Strip tour names / subtitles for dedup key (e.g. "Sombr: The Tour" → "sombr")
     const normalizeArtist = (s: string) =>
       normalize(s.split(/[:\-–—|]/)[0].trim());
+    // Strip city suffixes and sub-venues for dedup
+    const normalizeVenue = (s: string) =>
+      normalize(s.split(/[,\-–—]/)[0].trim());
+    // Use date-only for dedup (ignore time differences)
+    const dateOnly = (d: string) => new Date(d).toISOString().split("T")[0];
     const seen = new Map<string, ScrapedConcert>();
     for (const c of allConcerts) {
-      const key = `${normalizeArtist(c.artist)}|${normalize(c.venue)}|${c.date}`;
+      const key = `${normalizeArtist(c.artist)}|${normalizeVenue(c.venue)}|${dateOnly(c.date)}`;
       if (!seen.has(key)) {
         seen.set(key, c);
       } else {
