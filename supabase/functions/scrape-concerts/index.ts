@@ -19,6 +19,8 @@ interface ScrapedConcert {
   source_url: string;
 }
 
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function scrapeSource(
   apiKey: string,
   url: string,
@@ -51,7 +53,6 @@ async function scrapeSource(
 
     const markdown = data?.data?.markdown || data?.markdown || "";
     const links = data?.data?.links || data?.links || [];
-    // Extract image links to pass to AI
     const imageLinks = Array.isArray(links)
       ? links.filter((l: string) => /\.(jpg|jpeg|png|webp|avif)/i.test(l))
       : [];
@@ -61,7 +62,6 @@ async function scrapeSource(
       return [];
     }
 
-    // Check if this is an empty page (Cirkus pagination end)
     if (markdown.includes("Inga evenemang hittades")) {
       console.log(`${sourceName} page is empty (Inga evenemang hittades)`);
       return [];
@@ -88,7 +88,7 @@ async function scrapeSource(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-flash-lite",
           messages: [
             {
               role: "system",
@@ -107,15 +107,18 @@ Also normalize venue names to their short form. Remove city names and sub-venue 
 - "Ulriksdals Slott - Solna" → "Ulriksdals Slott"
 - "Cirkus, Stockholm" → "Cirkus"
 - "Gröna Lund" (always use this exact name for Gröna Lund events)
+- "Kulturhuset Stadsteatern" or "Studion" → "Kulturhuset Stadsteatern"
 
 IMPORTANT: When a venue name includes a city suffix (e.g. ", Stockholm", " - Solna"), remove it. When it includes a sub-venue (e.g. "– Stora Scen"), remove it. Use the shortest recognizable venue name.
+
+IMPORTANT: Extract ALL events on the page, including those where tickets are not yet on sale. We want to capture future events even if ticket sales haven't started.
 
 Return a JSON array with these fields:
 - artist: string (clean performer/band name)
 - venue: string (normalized venue name)
 - date: string (ISO 8601 datetime. Current year is 2026. If no time given, use 19:00)
 - ticket_url: string or null (full URL to buy tickets)
-- tickets_available: boolean (true if on sale)
+- tickets_available: boolean (true if on sale, false if not yet on sale or sold out)
 - image_url: string or null (full URL to artist/event image if found in the content or image links below)
 
 IMPORTANT: Match artist images from the image links provided below. Look for image filenames that contain or relate to artist names.
@@ -133,7 +136,12 @@ Return ONLY valid JSON array. No explanation. If no events found, return [].`,
     );
 
     const aiData = await aiResponse.json();
+    if (!aiResponse.ok) {
+      console.error(`AI gateway error for ${sourceName}:`, JSON.stringify(aiData).substring(0, 500));
+      return [];
+    }
     const content = aiData?.choices?.[0]?.message?.content || "[]";
+    console.log(`AI response preview for ${sourceName}: ${content.substring(0, 200)}`);
 
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
@@ -172,12 +180,10 @@ async function scrapePaginated(
 ): Promise<ScrapedConcert[]> {
   const all: ScrapedConcert[] = [];
 
-  // Page 1 is the base URL
   const firstPage = await scrapeSource(apiKey, baseUrl, sourceName, eventCategory);
   if (firstPage.length === 0) return all;
   all.push(...firstPage);
 
-  // Pages 2+
   for (let page = 2; page <= maxPages; page++) {
     const url = `${baseUrl}page/${page}/`;
     const results = await scrapeSource(apiKey, url, sourceName, eventCategory);
@@ -189,6 +195,57 @@ async function scrapePaginated(
   }
 
   return all;
+}
+
+// Process tasks sequentially to avoid AI rate limits
+async function scrapeBatch(
+  tasks: Array<{ fn: () => Promise<ScrapedConcert[]>; name: string }>
+): Promise<ScrapedConcert[]> {
+  const all: ScrapedConcert[] = [];
+  for (let i = 0; i < tasks.length; i++) {
+    if (i > 0) await delay(2000); // 2s delay between sources to avoid rate limits
+    try {
+      const result = await tasks[i].fn();
+      console.log(`✓ ${tasks[i].name}: ${result.length} events`);
+      all.push(...result);
+    } catch (err) {
+      console.error(`✗ ${tasks[i].name}: ${err}`);
+    }
+  }
+  return all;
+}
+
+// Normalize helpers for deduplication
+const normalize = (s: string) => s.toLowerCase().replace(/[^a-zåäö0-9]/g, "");
+const normalizeArtist = (s: string) => normalize(s.split(/[:\-–—|]/)[0].trim());
+const normalizeVenue = (s: string) => normalize(s.split(/[,\-–—]/)[0].trim());
+const dateOnly = (d: string) => {
+  try {
+    return new Date(d).toISOString().split("T")[0];
+  } catch {
+    return d;
+  }
+};
+
+function deduplicateConcerts(concerts: ScrapedConcert[]): ScrapedConcert[] {
+  const seen = new Map<string, ScrapedConcert>();
+  for (const c of concerts) {
+    const key = `${normalizeArtist(c.artist)}|${normalizeVenue(c.venue)}|${dateOnly(c.date)}`;
+    if (!seen.has(key)) {
+      seen.set(key, c);
+    } else {
+      const existing = seen.get(key)!;
+      // Keep entry with more info (image, ticket_url) or shorter artist name
+      if (
+        (!existing.image_url && c.image_url) ||
+        (!existing.ticket_url && c.ticket_url) ||
+        (c.artist.length < existing.artist.length)
+      ) {
+        seen.set(key, { ...existing, ...c, image_url: c.image_url || existing.image_url, ticket_url: c.ticket_url || existing.ticket_url });
+      }
+    }
+  }
+  return [...seen.values()];
 }
 
 async function searchArtistImage(
@@ -246,95 +303,170 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Static concert pages
-    const staticConcertUrls = [
-      { url: "https://stockholmlive.com/evenemang/", name: "Stockholm Live" },
-      { url: "https://stockholmlive.com/evenemang/page/2/", name: "Stockholm Live" },
-      { url: "https://stockholmlive.com/evenemang/page/3/", name: "Stockholm Live" },
-      // AXS Stockholm
-      { url: "https://www.axs.com/se/venues/1702/avicii-arena", name: "AXS" },
-      { url: "https://www.axs.com/se/venues/31697/hovet", name: "AXS" },
-      { url: "https://www.axs.com/se/venues/141684/strawberry-arena", name: "AXS" },
-    ];
+    const allConcerts: ScrapedConcert[] = [];
+    let totalUpserted = 0;
 
-    // Konserthuset - month-based calendar, scrape each month through Dec 2026
+    // Helper: deduplicate + upsert a batch incrementally
+    async function upsertBatch(concerts: ScrapedConcert[]) {
+      const deduped = deduplicateConcerts(concerts);
+      let count = 0;
+      for (const concert of deduped) {
+        const { error } = await supabase.from("concerts").upsert(
+          {
+            artist: concert.artist,
+            venue: concert.venue,
+            date: concert.date,
+            ticket_url: concert.ticket_url,
+            ticket_sale_date: concert.ticket_sale_date,
+            tickets_available: concert.tickets_available,
+            image_url: concert.image_url,
+            event_type: concert.event_type,
+            source: concert.source,
+            source_url: concert.source_url,
+          },
+          { onConflict: "artist,venue,date" }
+        );
+        if (error) {
+          console.error(`Upsert error:`, error.message);
+        } else {
+          count++;
+        }
+      }
+      totalUpserted += count;
+      console.log(`Upserted ${count} from batch of ${concerts.length}`);
+    }
+
+    // ==================== BATCH 1: Main Stockholm venues ====================
+    console.log("=== BATCH 1: Main Stockholm venues ===");
+    const batch1 = await scrapeBatch([
+      {
+        name: "Cirkus",
+        fn: () => scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10),
+      },
+      {
+        name: "Gröna Lund",
+        fn: () => scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }),
+      },
+      {
+        name: "Kulturhuset",
+        fn: () => scrapeSource(firecrawlKey, "https://kulturhusetstadsteatern.se/konserter", "Kulturhuset Stadsteatern", "concert", { waitFor: 15000, onlyMainContent: false }),
+      },
+      {
+        name: "Södra Teatern",
+        fn: () => scrapeSource(firecrawlKey, "https://sodrateatern.com/", "Södra Teatern", "concert", { waitFor: 8000, onlyMainContent: false }),
+      },
+    ]);
+    allConcerts.push(...batch1);
+    await upsertBatch(batch1);
+
+    // ==================== BATCH 2: Stockholm Live + AXS ====================
+    console.log("=== BATCH 2: Stockholm Live + AXS ===");
+    const batch2 = await scrapeBatch([
+      { name: "Stockholm Live p1", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/", "Stockholm Live", "concert") },
+      { name: "Stockholm Live p2", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/2/", "Stockholm Live", "concert") },
+      { name: "Stockholm Live p3", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/3/", "Stockholm Live", "concert") },
+      { name: "Stockholm Live p4", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/4/", "Stockholm Live", "concert") },
+      { name: "Stockholm Live p5", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/5/", "Stockholm Live", "concert") },
+      { name: "AXS Avicii Arena", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/1702/avicii-arena", "AXS", "concert") },
+      { name: "AXS Hovet", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/31697/hovet", "AXS", "concert") },
+      { name: "AXS Strawberry Arena", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/141684/strawberry-arena", "AXS", "concert") },
+    ]);
+    allConcerts.push(...batch2);
+    await upsertBatch(batch2);
+
+    // ==================== BATCH 3: Konserthuset (month-based) ====================
+    console.log("=== BATCH 3: Konserthuset ===");
     const konserthusetMonths = [
       "2026-02", "2026-03", "2026-04", "2026-05", "2026-06",
       "2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12",
     ];
-    const konserthusetUrls = konserthusetMonths.map((m) => ({
-      url: `https://www.konserthuset.se/program-och-biljetter/kalender/?month=${m}`,
-      name: "Konserthuset",
-    }));
+    const batch3 = await scrapeBatch(
+      konserthusetMonths.map((m) => ({
+        name: `Konserthuset ${m}`,
+        fn: () => scrapeSource(
+          firecrawlKey,
+          `https://www.konserthuset.se/program-och-biljetter/kalender/?month=${m}`,
+          "Konserthuset",
+          "concert",
+          { waitFor: 5000 }
+        ),
+      }))
+    );
+    allConcerts.push(...batch3);
+    await upsertBatch(batch3);
 
-    // Live Nation - paginate through Stockholm events (city 65969, country 212)
-    const livenationPages: { url: string; name: string }[] = [];
-    for (let p = 1; p <= 50; p++) {
-      livenationPages.push({
-        url: `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`,
-        name: "Live Nation",
-      });
-    }
-
-    const concertResults = await Promise.allSettled([
-      scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10),
-      // Gröna Lund - needs longer wait for JS rendering, no onlyMainContent
-      scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }),
-      // Kulturhuset Stadsteatern - JS rendered
-      scrapeSource(firecrawlKey, "https://kulturhusetstadsteatern.se/konserter", "Kulturhuset", "concert", { waitFor: 8000, onlyMainContent: false }),
-      ...staticConcertUrls.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
-      ...konserthusetUrls.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert", { waitFor: 5000 })),
-      ...livenationPages.map((s) => scrapeSource(firecrawlKey, s.url, s.name, "concert")),
+    // ==================== BATCH 4: Ticketmaster Stockholm Music ====================
+    console.log("=== BATCH 4: Ticketmaster ===");
+    const batch4 = await scrapeBatch([
+      {
+        name: "Ticketmaster Stockholm Music",
+        fn: () => scrapeSource(
+          firecrawlKey,
+          "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ",
+          "Ticketmaster",
+          "concert",
+          { waitFor: 8000, onlyMainContent: false }
+        ),
+      },
+      {
+        name: "Ticketmaster Stockholm Music p2",
+        fn: () => scrapeSource(
+          firecrawlKey,
+          "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=2",
+          "Ticketmaster",
+          "concert",
+          { waitFor: 8000, onlyMainContent: false }
+        ),
+      },
+      {
+        name: "Ticketmaster Stockholm Music p3",
+        fn: () => scrapeSource(
+          firecrawlKey,
+          "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=3",
+          "Ticketmaster",
+          "concert",
+          { waitFor: 8000, onlyMainContent: false }
+        ),
+      },
     ]);
+    allConcerts.push(...batch4);
+    await upsertBatch(batch4);
 
-    // Comedy sources
-    const comedyResults = await Promise.allSettled([
-      scrapeSource(firecrawlKey, "https://www.nojesteatern.se/program/", "Nöjesteatern", "comedy"),
-      scrapeSource(firecrawlKey, "https://www.hyvens.se/program/", "Hyvens", "comedy"),
-      scrapeSource(firecrawlKey, "https://www.livenation.se/search?query=comedy+stockholm", "Live Nation", "comedy"),
+    // ==================== BATCH 5: Live Nation (reduced to 10 pages) ====================
+    console.log("=== BATCH 5: Live Nation ===");
+    const lnPages = Array.from({ length: 10 }, (_, i) => i + 1);
+    const batch5 = await scrapeBatch(
+      lnPages.map((p) => ({
+        name: `Live Nation p${p}`,
+        fn: () => scrapeSource(
+          firecrawlKey,
+          `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`,
+          "Live Nation",
+          "concert"
+        ),
+      }))
+    );
+    allConcerts.push(...batch5);
+    await upsertBatch(batch5);
+
+    // ==================== BATCH 6: Comedy ====================
+    console.log("=== BATCH 6: Comedy ===");
+    const batch6 = await scrapeBatch([
+      { name: "Nöjesteatern", fn: () => scrapeSource(firecrawlKey, "https://www.nojesteatern.se/program/", "Nöjesteatern", "comedy") },
+      { name: "Hyvens", fn: () => scrapeSource(firecrawlKey, "https://www.hyvens.se/program/", "Hyvens", "comedy") },
+      { name: "Live Nation Comedy", fn: () => scrapeSource(firecrawlKey, "https://www.livenation.se/search?query=comedy+stockholm", "Live Nation", "comedy") },
     ]);
+    allConcerts.push(...batch6);
+    await upsertBatch(batch6);
 
-    const allConcerts: ScrapedConcert[] = [];
-    for (const result of [...concertResults, ...comedyResults]) {
-      if (result.status === "fulfilled") {
-        allConcerts.push(...result.value);
-      }
-    }
-
-    console.log(`Total events scraped: ${allConcerts.length}`);
-
-    // Deduplicate by normalized artist+venue+DATE ONLY (ignore time differences)
-    const normalize = (s: string) => s.toLowerCase().replace(/[^a-zåäö0-9]/g, "");
-    // Strip tour names / subtitles for dedup key (e.g. "Sombr: The Tour" → "sombr")
-    const normalizeArtist = (s: string) =>
-      normalize(s.split(/[:\-–—|]/)[0].trim());
-    // Strip city suffixes and sub-venues for dedup
-    const normalizeVenue = (s: string) =>
-      normalize(s.split(/[,\-–—]/)[0].trim());
-    // Use date-only for dedup (ignore time differences)
-    const dateOnly = (d: string) => new Date(d).toISOString().split("T")[0];
-    const seen = new Map<string, ScrapedConcert>();
-    for (const c of allConcerts) {
-      const key = `${normalizeArtist(c.artist)}|${normalizeVenue(c.venue)}|${dateOnly(c.date)}`;
-      if (!seen.has(key)) {
-        seen.set(key, c);
-      } else {
-        // Keep the entry with shorter artist name (cleaner)
-        const existing = seen.get(key)!;
-        if (c.artist.length < existing.artist.length) {
-          seen.set(key, c);
-        }
-      }
-    }
-    const dedupedConcerts = [...seen.values()];
-    console.log(`After dedup: ${dedupedConcerts.length} unique events`);
-
-    // For events without images, try to find artist images
+    // ==================== Image backfill ====================
+    console.log("=== Image backfill ===");
+    const dedupedAll = deduplicateConcerts(allConcerts);
     if (lovableApiKey) {
-      const noImageConcerts = dedupedConcerts.filter((c) => !c.image_url);
+      const noImageConcerts = dedupedAll.filter((c) => !c.image_url);
       const uniqueArtists = [...new Set(noImageConcerts.map((c) => c.artist))];
+      const artistsToSearch = uniqueArtists.slice(0, 30);
 
-      const artistsToSearch = uniqueArtists.slice(0, 50);
       const imageResults = await Promise.allSettled(
         artistsToSearch.map(async (artist) => {
           const url = await searchArtistImage(artist, lovableApiKey);
@@ -349,43 +481,23 @@ Deno.serve(async (req) => {
         }
       }
 
-      for (const c of dedupedConcerts) {
-        if (!c.image_url && imageMap.has(c.artist)) {
-          c.image_url = imageMap.get(c.artist)!;
-        }
+      // Update DB records that are missing images
+      for (const [artist, imageUrl] of imageMap) {
+        await supabase
+          .from("concerts")
+          .update({ image_url: imageUrl })
+          .eq("artist", artist)
+          .is("image_url", null);
       }
+      console.log(`Backfilled images for ${imageMap.size} artists`);
     }
 
-    // Upsert
-    let inserted = 0;
-    for (const concert of dedupedConcerts) {
-      const { error } = await supabase.from("concerts").upsert(
-        {
-          artist: concert.artist,
-          venue: concert.venue,
-          date: concert.date,
-          ticket_url: concert.ticket_url,
-          ticket_sale_date: concert.ticket_sale_date,
-          tickets_available: concert.tickets_available,
-          image_url: concert.image_url,
-          event_type: concert.event_type,
-          source: concert.source,
-          source_url: concert.source_url,
-        },
-        { onConflict: "artist,venue,date" }
-      );
-
-      if (error) {
-        console.error(`Error upserting:`, error.message);
-      } else {
-        inserted++;
-      }
-    }
+    console.log(`Total scraped: ${allConcerts.length}, Total upserted: ${totalUpserted}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Scraped ${allConcerts.length} events, deduped to ${dedupedConcerts.length}, upserted ${inserted}`,
+        message: `Scraped ${allConcerts.length} events across 6 batches, upserted ${totalUpserted}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
