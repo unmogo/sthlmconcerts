@@ -79,20 +79,29 @@ async function scrapeSource(
       ? `You are a comedy/stand-up event data extractor for Stockholm, Sweden. Extract ONLY stand-up comedy shows, comedy specials, and humorous live performances. EXCLUDE: music concerts, theater plays, musicals, sports.`
       : `You are a concert data extractor for Stockholm, Sweden. Extract ONLY music concerts and live music performances. EXCLUDE: sports events, comedy shows, theater, conferences, exhibitions, family shows, musicals unless they are clearly a music concert. INCLUDE: concerts, live music, DJ sets, music festivals, band performances, solo artist shows, orchestra/symphony concerts.`;
 
-    const aiResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-lite",
-          messages: [
-            {
-              role: "system",
-              content: `${categoryPrompt}
+    // AI call with retry for rate limits
+    let aiData: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        const backoff = attempt * 10000; // 10s, 20s
+        console.log(`Rate limited, waiting ${backoff / 1000}s before retry ${attempt + 1}...`);
+        await delay(backoff);
+      }
+
+      const aiResponse = await fetch(
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${lovableApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+              {
+                role: "system",
+                content: `${categoryPrompt}
 
 IMPORTANT: Clean up artist/performer names. Remove tour names, subtitles, and extra descriptions from the artist field. For example:
 - "5 Seconds of Summer: EVERYONE'S A STAR! WORLD TOUR" → "5 Seconds of Summer"
@@ -124,20 +133,29 @@ Return a JSON array with these fields:
 IMPORTANT: Match artist images from the image links provided below. Look for image filenames that contain or relate to artist names.
 
 Return ONLY valid JSON array. No explanation. If no events found, return [].`,
-            },
-            {
-              role: "user",
-              content: `Extract events from this ${sourceName} page. Source URL: ${url}\n\n${markdown.substring(0, 18000)}${imageLinks.length > 0 ? `\n\n--- IMAGE LINKS FOUND ON PAGE ---\n${imageLinks.slice(0, 100).join("\n")}` : ""}`,
-            },
-          ],
-          temperature: 0.1,
-        }),
-      }
-    );
+              },
+              {
+                role: "user",
+                content: `Extract events from this ${sourceName} page. Source URL: ${url}\n\n${markdown.substring(0, 18000)}${imageLinks.length > 0 ? `\n\n--- IMAGE LINKS FOUND ON PAGE ---\n${imageLinks.slice(0, 100).join("\n")}` : ""}`,
+              },
+            ],
+            temperature: 0.1,
+          }),
+        }
+      );
 
-    const aiData = await aiResponse.json();
-    if (!aiResponse.ok) {
+      aiData = await aiResponse.json();
+      if (aiResponse.ok) break;
+      if (aiResponse.status === 429) {
+        console.log(`Rate limited on attempt ${attempt + 1} for ${sourceName}`);
+        continue;
+      }
       console.error(`AI gateway error for ${sourceName}:`, JSON.stringify(aiData).substring(0, 500));
+      return [];
+    }
+
+    if (!aiData?.choices?.[0]?.message?.content) {
+      console.log(`No AI response after retries for ${sourceName}`);
       return [];
     }
     const content = aiData?.choices?.[0]?.message?.content || "[]";
@@ -203,7 +221,7 @@ async function scrapeBatch(
 ): Promise<ScrapedConcert[]> {
   const all: ScrapedConcert[] = [];
   for (let i = 0; i < tasks.length; i++) {
-    if (i > 0) await delay(2000); // 2s delay between sources to avoid rate limits
+    if (i > 0) await delay(5000); // 5s delay between sources to avoid rate limits
     try {
       const result = await tasks[i].fn();
       console.log(`✓ ${tasks[i].name}: ${result.length} events`);
@@ -290,6 +308,17 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Support batch filtering: POST { batch: 7, page: 1 } to run specific batch/page
+    let targetBatch: number | null = null;
+    let targetPage: number = 1;
+    try {
+      const body = await req.json();
+      if (body?.batch) targetBatch = Number(body.batch);
+      if (body?.page) targetPage = Number(body.page);
+    } catch { /* no body = run all */ }
+
+    const shouldRun = (b: number) => targetBatch === null || targetBatch === b;
+
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
     if (!firecrawlKey) {
       return new Response(
@@ -337,6 +366,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 1: Main Stockholm venues ====================
+    if (shouldRun(1)) {
     console.log("=== BATCH 1: Main Stockholm venues ===");
     const batch1 = await scrapeBatch([
       {
@@ -348,18 +378,16 @@ Deno.serve(async (req) => {
         fn: () => scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }),
       },
       {
-        name: "Kulturhuset",
-        fn: () => scrapeSource(firecrawlKey, "https://kulturhusetstadsteatern.se/konserter", "Kulturhuset Stadsteatern", "concert", { waitFor: 15000, onlyMainContent: false }),
-      },
-      {
         name: "Södra Teatern",
         fn: () => scrapeSource(firecrawlKey, "https://sodrateatern.com/", "Södra Teatern", "concert", { waitFor: 8000, onlyMainContent: false }),
       },
     ]);
     allConcerts.push(...batch1);
     await upsertBatch(batch1);
+    }
 
     // ==================== BATCH 2: Stockholm Live + AXS ====================
+    if (shouldRun(2)) {
     console.log("=== BATCH 2: Stockholm Live + AXS ===");
     const batch2 = await scrapeBatch([
       { name: "Stockholm Live p1", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/", "Stockholm Live", "concert") },
@@ -373,8 +401,10 @@ Deno.serve(async (req) => {
     ]);
     allConcerts.push(...batch2);
     await upsertBatch(batch2);
+    }
 
     // ==================== BATCH 3: Konserthuset (month-based) ====================
+    if (shouldRun(3)) {
     console.log("=== BATCH 3: Konserthuset ===");
     const konserthusetMonths = [
       "2026-02", "2026-03", "2026-04", "2026-05", "2026-06",
@@ -394,62 +424,45 @@ Deno.serve(async (req) => {
     );
     allConcerts.push(...batch3);
     await upsertBatch(batch3);
+    }
 
     // ==================== BATCH 4: Ticketmaster Stockholm Music ====================
+    if (shouldRun(4)) {
     console.log("=== BATCH 4: Ticketmaster ===");
     const batch4 = await scrapeBatch([
       {
         name: "Ticketmaster Stockholm Music",
-        fn: () => scrapeSource(
-          firecrawlKey,
-          "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ",
-          "Ticketmaster",
-          "concert",
-          { waitFor: 8000, onlyMainContent: false }
-        ),
+        fn: () => scrapeSource(firecrawlKey, "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ", "Ticketmaster", "concert", { waitFor: 8000, onlyMainContent: false }),
       },
       {
         name: "Ticketmaster Stockholm Music p2",
-        fn: () => scrapeSource(
-          firecrawlKey,
-          "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=2",
-          "Ticketmaster",
-          "concert",
-          { waitFor: 8000, onlyMainContent: false }
-        ),
+        fn: () => scrapeSource(firecrawlKey, "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=2", "Ticketmaster", "concert", { waitFor: 8000, onlyMainContent: false }),
       },
       {
         name: "Ticketmaster Stockholm Music p3",
-        fn: () => scrapeSource(
-          firecrawlKey,
-          "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=3",
-          "Ticketmaster",
-          "concert",
-          { waitFor: 8000, onlyMainContent: false }
-        ),
+        fn: () => scrapeSource(firecrawlKey, "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=3", "Ticketmaster", "concert", { waitFor: 8000, onlyMainContent: false }),
       },
     ]);
     allConcerts.push(...batch4);
     await upsertBatch(batch4);
+    }
 
     // ==================== BATCH 5: Live Nation (reduced to 10 pages) ====================
+    if (shouldRun(5)) {
     console.log("=== BATCH 5: Live Nation ===");
     const lnPages = Array.from({ length: 10 }, (_, i) => i + 1);
     const batch5 = await scrapeBatch(
       lnPages.map((p) => ({
         name: `Live Nation p${p}`,
-        fn: () => scrapeSource(
-          firecrawlKey,
-          `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`,
-          "Live Nation",
-          "concert"
-        ),
+        fn: () => scrapeSource(firecrawlKey, `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`, "Live Nation", "concert"),
       }))
     );
     allConcerts.push(...batch5);
     await upsertBatch(batch5);
+    }
 
     // ==================== BATCH 6: Comedy ====================
+    if (shouldRun(6)) {
     console.log("=== BATCH 6: Comedy ===");
     const batch6 = await scrapeBatch([
       { name: "Nöjesteatern", fn: () => scrapeSource(firecrawlKey, "https://www.nojesteatern.se/program/", "Nöjesteatern", "comedy") },
@@ -458,8 +471,75 @@ Deno.serve(async (req) => {
     ]);
     allConcerts.push(...batch6);
     await upsertBatch(batch6);
+    }
+
+    // ==================== BATCH 7: Kulturhuset individual pages ====================
+    if (shouldRun(7)) {
+    console.log("=== BATCH 7: Kulturhuset individual pages ===");
+    const kulturhusetUrls = [
+      "https://kulturhusetstadsteatern.se/konserter/talib-kweli",
+      "https://kulturhusetstadsteatern.se/konserter/high-vis",
+      "https://kulturhusetstadsteatern.se/konserter/n-i-t-e-f-i-s-h",
+      "https://kulturhusetstadsteatern.se/konserter/lava-live-polofsson-plaster",
+      "https://kulturhusetstadsteatern.se/konserter/johnny-dowd",
+      "https://kulturhusetstadsteatern.se/konserter/oscar-danielson",
+      "https://kulturhusetstadsteatern.se/konserter/jakob-hellman",
+      "https://kulturhusetstadsteatern.se/konserter/skitarg",
+      "https://kulturhusetstadsteatern.se/konserter/hederos-hellberg",
+      "https://kulturhusetstadsteatern.se/konserter/rise-of-valkyries-fest",
+      "https://kulturhusetstadsteatern.se/konserter/murder-squad",
+      "https://kulturhusetstadsteatern.se/konserter/kozak-siromaha",
+      "https://kulturhusetstadsteatern.se/konserter/diset",
+      "https://kulturhusetstadsteatern.se/konserter/pussy-riot-riot-days",
+      "https://kulturhusetstadsteatern.se/konserter/isaiah-sharkey",
+      "https://kulturhusetstadsteatern.se/konserter/knower-x-norrbotten-big-band",
+      "https://kulturhusetstadsteatern.se/konserter/ibrahim-maalouf",
+      "https://kulturhusetstadsteatern.se/konserter/john-cooper-clarke",
+      "https://kulturhusetstadsteatern.se/konserter/teodor-wolgers-episod-i-vikens-kapell",
+      "https://kulturhusetstadsteatern.se/konserter/lastkaj-14",
+      "https://kulturhusetstadsteatern.se/konserter/lisa-miskovsky",
+      "https://kulturhusetstadsteatern.se/konserter/knogjarn",
+      "https://kulturhusetstadsteatern.se/konserter/abu-nein-christ-vs-warhol",
+      "https://kulturhusetstadsteatern.se/konserter/kaliffa",
+    ];
+
+    // Check which artists already exist in DB to skip them
+    const { data: existingKulturhuset } = await supabase
+      .from("concerts")
+      .select("artist")
+      .or("source.eq.Kulturhuset Stadsteatern,venue.ilike.%kulturhuset%");
+    const existingArtists = new Set(
+      (existingKulturhuset || []).map((c: any) => c.artist.toLowerCase())
+    );
+
+    const missingUrls = kulturhusetUrls.filter((url) => {
+      const slug = url.split("/").pop() || "";
+      const artistGuess = slug.replace(/-/g, " ").toLowerCase();
+      return ![...existingArtists].some(
+        (a) => a.includes(artistGuess) || artistGuess.includes(a)
+      );
+    });
+
+    console.log(`Kulturhuset: ${kulturhusetUrls.length} total, ${missingUrls.length} to scrape`);
+
+    // Process 4 URLs per page to avoid timeout
+    const pageSize = 4;
+    const startIdx = (targetPage - 1) * pageSize;
+    const pageUrls = missingUrls.slice(startIdx, startIdx + pageSize);
+    console.log(`Kulturhuset page ${targetPage}: processing ${pageUrls.length} URLs (${startIdx}-${startIdx + pageUrls.length} of ${missingUrls.length})`);
+
+    const batch7 = await scrapeBatch(
+      pageUrls.map((url) => ({
+        name: `Kulturhuset: ${url.split("/").pop()}`,
+        fn: () => scrapeSource(firecrawlKey, url, "Kulturhuset Stadsteatern", "concert", { waitFor: 5000 }),
+      }))
+    );
+    allConcerts.push(...batch7);
+    await upsertBatch(batch7);
+    }
 
     // ==================== Image backfill ====================
+    if (shouldRun(8) || targetBatch === null) {
     console.log("=== Image backfill ===");
     const dedupedAll = deduplicateConcerts(allConcerts);
     if (lovableApiKey) {
@@ -481,7 +561,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Update DB records that are missing images
       for (const [artist, imageUrl] of imageMap) {
         await supabase
           .from("concerts")
@@ -490,6 +569,7 @@ Deno.serve(async (req) => {
           .is("image_url", null);
       }
       console.log(`Backfilled images for ${imageMap.size} artists`);
+    }
     }
 
     console.log(`Total scraped: ${allConcerts.length}, Total upserted: ${totalUpserted}`);
