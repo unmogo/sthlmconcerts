@@ -1,8 +1,10 @@
-import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus } from "lucide-react";
+import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, User } from "lucide-react";
 import { triggerScrape } from "@/lib/api/concerts";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 import type { EventType } from "@/types/concert";
 
 interface HeaderProps {
@@ -11,14 +13,16 @@ interface HeaderProps {
   onExport: () => void;
   onAdd: () => void;
   deleting: boolean;
-  filter: EventType | "all";
-  onFilterChange: (f: EventType | "all") => void;
+  filter: EventType | "all" | "favorites";
+  onFilterChange: (f: EventType | "all" | "favorites") => void;
 }
 
 export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
   const [scraping, setScraping] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, isAdmin, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const handleScrape = async () => {
     setScraping(true);
@@ -38,6 +42,11 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
     } finally {
       setScraping(false);
     }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({ title: "Signed out" });
   };
 
   return (
@@ -63,6 +72,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
             { value: "all" as const, label: "All", icon: Sparkles },
             { value: "concert" as const, label: "Concerts", icon: Music },
             { value: "comedy" as const, label: "Comedy", icon: Laugh },
+            ...(user ? [{ value: "favorites" as const, label: "Favourites", icon: Heart }] : []),
           ]).map(({ value, label, icon: Icon }) => (
             <button
               key={value}
@@ -80,43 +90,71 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
         </div>
 
         <div className="flex items-center gap-2">
-          {selectedIds.length > 0 && (
+          {/* Admin-only: selection actions */}
+          {isAdmin && selectedIds.length > 0 && (
+            <button
+              onClick={onDelete}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete {selectedIds.length}
+            </button>
+          )}
+
+          {/* Admin-only: Add, Export, Refresh */}
+          {isAdmin && (
             <>
               <button
-                onClick={onDelete}
-                disabled={deleting}
-                className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
+                onClick={onAdd}
+                className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
               >
-                <Trash2 className="h-4 w-4" />
-                Delete {selectedIds.length}
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+
+              <button
+                onClick={onExport}
+                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
+              >
+                <Download className="h-4 w-4" />
+                Export
+              </button>
+
+              <button
+                onClick={handleScrape}
+                disabled={scraping}
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-neon px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${scraping ? "animate-spin" : ""}`} />
+                {scraping ? "Scraping..." : "Refresh"}
               </button>
             </>
           )}
 
-          <button
-            onClick={onAdd}
-            className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-          >
-            <Plus className="h-4 w-4" />
-            Add
-          </button>
-
-          <button
-            onClick={onExport}
-            className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </button>
-
-          <button
-            onClick={handleScrape}
-            disabled={scraping}
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-neon px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${scraping ? "animate-spin" : ""}`} />
-            {scraping ? "Scraping..." : "Refresh"}
-          </button>
+          {/* Auth button */}
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground hidden sm:block truncate max-w-[120px]">
+                {user.email}
+              </span>
+              <button
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Sign out</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => navigate("/auth")}
+              className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+            >
+              <LogIn className="h-4 w-4" />
+              Sign in
+            </button>
+          )}
         </div>
       </div>
     </header>

@@ -1,14 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchConcerts } from "@/lib/api/concerts";
 import { ConcertCard } from "./ConcertCard";
-import { Loader2, Music } from "lucide-react";
+import { Loader2, Music, Heart } from "lucide-react";
 import type { Concert, EventType } from "@/types/concert";
 import { useMemo } from "react";
+import { useFavorites } from "@/hooks/useFavorites";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
+
+type FilterType = EventType | "all" | "favorites";
 
 interface ConcertGridProps {
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
-  filter: EventType | "all";
+  filter: FilterType;
 }
 
 // Strip tour names/subtitles for grouping (e.g. "Sombr: The Tour" → "sombr")
@@ -59,11 +64,22 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter }: ConcertGrid
     queryFn: fetchConcerts,
   });
 
+  const { user } = useAuth();
+  const { favoriteIds } = useFavorites();
+  const navigate = useNavigate();
+
   const grouped = useMemo(() => {
     if (!concerts) return [];
-    const filtered = filter === "all" ? concerts : concerts.filter((c) => c.event_type === filter);
+    let filtered: Concert[];
+    if (filter === "favorites") {
+      filtered = concerts.filter((c) => favoriteIds.includes(c.id));
+    } else if (filter === "all") {
+      filtered = concerts;
+    } else {
+      filtered = concerts.filter((c) => c.event_type === filter);
+    }
     return groupConcerts(filtered);
-  }, [concerts, filter]);
+  }, [concerts, filter, favoriteIds]);
 
   if (isLoading) {
     return (
@@ -82,12 +98,31 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter }: ConcertGrid
     );
   }
 
+  if (filter === "favorites" && !user) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Heart className="h-12 w-12 text-primary/40" />
+        <p className="text-lg font-medium">Sign in to see your favourites</p>
+        <button
+          onClick={() => navigate("/auth")}
+          className="rounded-lg bg-gradient-neon px-4 py-2 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          Sign in
+        </button>
+      </div>
+    );
+  }
+
   if (grouped.length === 0) {
     return (
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Music className="h-12 w-12 text-primary/40" />
-        <p className="text-lg font-medium">No upcoming concerts found</p>
-        <p className="text-sm">Click Refresh to scrape the latest events</p>
+        <p className="text-lg font-medium">
+          {filter === "favorites" ? "No favourites saved yet" : "No upcoming concerts found"}
+        </p>
+        <p className="text-sm">
+          {filter === "favorites" ? "Click the heart on any concert to save it" : "Click Refresh to scrape the latest events"}
+        </p>
       </div>
     );
   }

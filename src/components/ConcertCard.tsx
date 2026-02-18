@@ -1,8 +1,11 @@
 import { format, formatDistanceToNow, isFuture } from "date-fns";
-import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil } from "lucide-react";
+import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } from "lucide-react";
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
 import { EditConcertDialog } from "./EditConcertDialog";
+import { useAuth } from "@/contexts/AuthContext";
+import { useFavorites } from "@/hooks/useFavorites";
+import { useNavigate } from "react-router-dom";
 
 interface ConcertCardProps {
   concert: Concert;
@@ -14,6 +17,10 @@ interface ConcertCardProps {
 
 export function ConcertCard({ concert, extraDates = [], index, selected, onToggleSelect }: ConcertCardProps) {
   const [showEdit, setShowEdit] = useState(false);
+  const { user, isAdmin } = useAuth();
+  const { favoriteIds, toggleFavorite } = useFavorites();
+  const navigate = useNavigate();
+
   const concertDate = new Date(concert.date);
   const saleDate = concert.ticket_sale_date ? new Date(concert.ticket_sale_date) : null;
   const ticketsSelling = concert.tickets_available;
@@ -21,6 +28,16 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   const allDates = [concert, ...extraDates];
   const displayDates = allDates.slice(0, 2);
   const hiddenCount = allDates.length - 2;
+  const isFavorited = favoriteIds.includes(concert.id);
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user) {
+      navigate("/auth");
+      return;
+    }
+    toggleFavorite(concert.id);
+  };
 
   return (
     <div
@@ -31,24 +48,41 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
       }`}
       style={{ animationDelay: `${index * 60}ms` }}
     >
-      {/* Select checkbox */}
-      <button
-        onClick={() => onToggleSelect(concert.id)}
-        className={`absolute left-3 top-3 z-20 flex h-6 w-6 items-center justify-center rounded-md border transition-all ${
-          selected
-            ? "border-primary bg-primary"
-            : "border-muted-foreground/40 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100"
-        }`}
-      >
-        {selected && <Check className="h-4 w-4 text-primary-foreground" />}
-      </button>
+      {/* Admin: Select checkbox */}
+      {isAdmin && (
+        <button
+          onClick={() => onToggleSelect(concert.id)}
+          className={`absolute left-3 top-3 z-20 flex h-6 w-6 items-center justify-center rounded-md border transition-all ${
+            selected
+              ? "border-primary bg-primary"
+              : "border-muted-foreground/40 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100"
+          }`}
+        >
+          {selected && <Check className="h-4 w-4 text-primary-foreground" />}
+        </button>
+      )}
 
-      {/* Edit button */}
+      {/* Admin: Edit button */}
+      {isAdmin && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowEdit(true); }}
+          className="absolute left-3 top-11 z-20 flex h-6 w-6 items-center justify-center rounded-md border border-muted-foreground/40 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-background/80"
+        >
+          <Pencil className="h-3.5 w-3.5 text-foreground" />
+        </button>
+      )}
+
+      {/* Favourite button — always visible for all users */}
       <button
-        onClick={(e) => { e.stopPropagation(); setShowEdit(true); }}
-        className="absolute left-3 top-11 z-20 flex h-6 w-6 items-center justify-center rounded-md border border-muted-foreground/40 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-background/80"
+        onClick={handleFavoriteClick}
+        className={`absolute right-3 bottom-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border transition-all ${
+          isFavorited
+            ? "border-rose-500/60 bg-rose-500/20 text-rose-400"
+            : "border-muted-foreground/30 bg-background/60 backdrop-blur-sm text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-rose-400"
+        }`}
+        title={user ? (isFavorited ? "Remove from favourites" : "Add to favourites") : "Sign in to save favourites"}
       >
-        <Pencil className="h-3.5 w-3.5 text-foreground" />
+        <Heart className={`h-4 w-4 ${isFavorited ? "fill-rose-400" : ""}`} />
       </button>
 
       {/* Image */}
@@ -96,13 +130,13 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
       </div>
 
       {/* Content */}
-      <div className="p-4 pt-2">
+      <div className="p-4 pt-2 pb-12">
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
           <MapPin className="h-3.5 w-3.5 text-primary/70 shrink-0" />
           <span className="truncate">{concert.venue}</span>
         </div>
 
-        {/* Dates - grouped, max 2 shown */}
+        {/* Dates */}
         <div className="space-y-1 mb-3">
           {displayDates.map((d, i) => {
             const dt = new Date(d.date);
