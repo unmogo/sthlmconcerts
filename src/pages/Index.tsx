@@ -8,12 +8,14 @@ import { fetchConcerts, deleteConcerts } from "@/lib/api/concerts";
 import { useToast } from "@/hooks/use-toast";
 import type { EventType } from "@/types/concert";
 
+type FilterType = EventType | "all" | "favorites";
+
 const Index = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showExport, setShowExport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [filter, setFilter] = useState<EventType | "all">("all");
+  const [filter, setFilter] = useState<FilterType>("all");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -58,11 +60,13 @@ const Index = () => {
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-foreground">
             Upcoming <span className="text-gradient">
-              {filter === "comedy" ? "Comedy Shows" : filter === "concert" ? "Concerts" : "Events"}
+              {filter === "comedy" ? "Comedy Shows" : filter === "concert" ? "Concerts" : filter === "favorites" ? "Favourites" : "Events"}
             </span>
           </h2>
           <p className="mt-2 text-muted-foreground">
-            All upcoming {filter === "all" ? "events" : filter === "comedy" ? "comedy shows" : "concerts"} in Stockholm · Click cards to select, then delete or export
+            {filter === "favorites"
+              ? "Your saved concerts"
+              : `All upcoming ${filter === "all" ? "events" : filter === "comedy" ? "comedy shows" : "concerts"} in Stockholm · Click cards to select, then delete or export`}
           </p>
         </div>
         <ConcertGrid selectedIds={selectedIds} onToggleSelect={handleToggleSelect} filter={filter} />
