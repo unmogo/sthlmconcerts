@@ -3,8 +3,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+// Global time budget: stop processing before edge function timeout
+const START_TIME = Date.now();
+const TIME_BUDGET_MS = 120_000; // 120 seconds, well under 150s timeout
+let aiCreditsExhausted = false;
+
+function hasTimeBudget(): boolean {
+  return Date.now() - START_TIME < TIME_BUDGET_MS;
+}
 
 interface ScrapedConcert {
   artist: string;
@@ -68,6 +77,11 @@ async function scrapeSource(
     }
 
     console.log(`Got ${markdown.length} chars from ${sourceName}`);
+
+    if (aiCreditsExhausted) {
+      console.log(`Skipping AI for ${sourceName} - credits exhausted`);
+      return [];
+    }
 
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
@@ -150,6 +164,11 @@ Return ONLY valid JSON array. No explanation. If no events found, return [].`,
         console.log(`Rate limited on attempt ${attempt + 1} for ${sourceName}`);
         continue;
       }
+      if (aiResponse.status === 402) {
+        console.log(`AI credits exhausted, skipping remaining AI calls`);
+        aiCreditsExhausted = true;
+        return [];
+      }
       console.error(`AI gateway error for ${sourceName}:`, JSON.stringify(aiData).substring(0, 500));
       return [];
     }
@@ -221,7 +240,15 @@ async function scrapeBatch(
 ): Promise<ScrapedConcert[]> {
   const all: ScrapedConcert[] = [];
   for (let i = 0; i < tasks.length; i++) {
-    if (i > 0) await delay(5000); // 5s delay between sources to avoid rate limits
+    if (!hasTimeBudget()) {
+      console.log(`Time budget exceeded, stopping batch at task ${i}/${tasks.length}`);
+      break;
+    }
+    if (aiCreditsExhausted) {
+      console.log(`AI credits exhausted, skipping remaining tasks`);
+      break;
+    }
+    if (i > 0) await delay(5000);
     try {
       const result = await tasks[i].fn();
       console.log(`✓ ${tasks[i].name}: ${result.length} events`);
@@ -366,7 +393,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 1: Main Stockholm venues ====================
-    if (shouldRun(1)) {
+    if (shouldRun(1) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 1: Main Stockholm venues ===");
     const batch1 = await scrapeBatch([
       {
@@ -387,7 +414,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 2: Stockholm Live + AXS ====================
-    if (shouldRun(2)) {
+    if (shouldRun(2) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 2: Stockholm Live + AXS ===");
     const batch2 = await scrapeBatch([
       { name: "Stockholm Live p1", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/", "Stockholm Live", "concert") },
@@ -404,7 +431,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 3: Konserthuset (month-based) ====================
-    if (shouldRun(3)) {
+    if (shouldRun(3) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 3: Konserthuset ===");
     const konserthusetMonths = [
       "2026-02", "2026-03", "2026-04", "2026-05", "2026-06",
@@ -427,7 +454,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 4: Ticketmaster Stockholm Music ====================
-    if (shouldRun(4)) {
+    if (shouldRun(4) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 4: Ticketmaster ===");
     const batch4 = await scrapeBatch([
       {
@@ -448,12 +475,12 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 5: Live Nation (full 50 pages) ====================
-    if (shouldRun(5)) {
+    if (shouldRun(5) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 5: Live Nation ===");
     // Run in sub-batches of 10 pages to avoid memory pressure, upsert after each sub-batch
     const totalLNPages = 50;
     const lnSubBatchSize = 10;
-    for (let start = 1; start <= totalLNPages; start += lnSubBatchSize) {
+    for (let start = 1; start <= totalLNPages && hasTimeBudget() && !aiCreditsExhausted; start += lnSubBatchSize) {
       const end = Math.min(start + lnSubBatchSize - 1, totalLNPages);
       const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
       console.log(`Live Nation sub-batch pages ${start}-${end}`);
@@ -469,7 +496,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 6: Comedy ====================
-    if (shouldRun(6)) {
+    if (shouldRun(6) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 6: Comedy ===");
     const batch6 = await scrapeBatch([
       { name: "Nöjesteatern", fn: () => scrapeSource(firecrawlKey, "https://www.nojesteatern.se/program/", "Nöjesteatern", "comedy") },
@@ -481,7 +508,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 7: Kulturhuset – auto-discover all concert pages ====================
-    if (shouldRun(7)) {
+    if (shouldRun(7) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 7: Kulturhuset (auto-discover) ===");
 
     // Step 1: scrape listing page to get all concert URLs
@@ -544,7 +571,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== BATCH 8: Resident Advisor Stockholm ====================
-    if (shouldRun(8)) {
+    if (shouldRun(8) && hasTimeBudget() && !aiCreditsExhausted) {
     console.log("=== BATCH 8: Resident Advisor Stockholm ===");
     // RA paginates via ?page=N
     const raPages = Array.from({ length: 5 }, (_, i) => i + 1);
@@ -602,10 +629,12 @@ Deno.serve(async (req) => {
 
     console.log(`Total scraped: ${allConcerts.length}, Total upserted: ${totalUpserted}`);
 
+    const elapsed = Math.round((Date.now() - START_TIME) / 1000);
+    const statusNote = aiCreditsExhausted ? " (stopped: AI credits exhausted)" : !hasTimeBudget() ? " (stopped: time limit reached)" : "";
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Scraped ${allConcerts.length} events across 8 batches, upserted ${totalUpserted}`,
+        message: `Scraped ${allConcerts.length} events, upserted ${totalUpserted} in ${elapsed}s${statusNote}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
