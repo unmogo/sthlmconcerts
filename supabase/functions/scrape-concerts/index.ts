@@ -447,18 +447,25 @@ Deno.serve(async (req) => {
     await upsertBatch(batch4);
     }
 
-    // ==================== BATCH 5: Live Nation (reduced to 10 pages) ====================
+    // ==================== BATCH 5: Live Nation (full 50 pages) ====================
     if (shouldRun(5)) {
     console.log("=== BATCH 5: Live Nation ===");
-    const lnPages = Array.from({ length: 10 }, (_, i) => i + 1);
-    const batch5 = await scrapeBatch(
-      lnPages.map((p) => ({
-        name: `Live Nation p${p}`,
-        fn: () => scrapeSource(firecrawlKey, `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`, "Live Nation", "concert"),
-      }))
-    );
-    allConcerts.push(...batch5);
-    await upsertBatch(batch5);
+    // Run in sub-batches of 10 pages to avoid memory pressure, upsert after each sub-batch
+    const totalLNPages = 50;
+    const lnSubBatchSize = 10;
+    for (let start = 1; start <= totalLNPages; start += lnSubBatchSize) {
+      const end = Math.min(start + lnSubBatchSize - 1, totalLNPages);
+      const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+      console.log(`Live Nation sub-batch pages ${start}-${end}`);
+      const subBatch = await scrapeBatch(
+        pages.map((p) => ({
+          name: `Live Nation p${p}`,
+          fn: () => scrapeSource(firecrawlKey, `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`, "Live Nation", "concert"),
+        }))
+      );
+      allConcerts.push(...subBatch);
+      await upsertBatch(subBatch);
+    }
     }
 
     // ==================== BATCH 6: Comedy ====================
@@ -473,37 +480,35 @@ Deno.serve(async (req) => {
     await upsertBatch(batch6);
     }
 
-    // ==================== BATCH 7: Kulturhuset individual pages ====================
+    // ==================== BATCH 7: Kulturhuset – auto-discover all concert pages ====================
     if (shouldRun(7)) {
-    console.log("=== BATCH 7: Kulturhuset individual pages ===");
-    const kulturhusetUrls = [
-      "https://kulturhusetstadsteatern.se/konserter/talib-kweli",
-      "https://kulturhusetstadsteatern.se/konserter/high-vis",
-      "https://kulturhusetstadsteatern.se/konserter/n-i-t-e-f-i-s-h",
-      "https://kulturhusetstadsteatern.se/konserter/lava-live-polofsson-plaster",
-      "https://kulturhusetstadsteatern.se/konserter/johnny-dowd",
-      "https://kulturhusetstadsteatern.se/konserter/oscar-danielson",
-      "https://kulturhusetstadsteatern.se/konserter/jakob-hellman",
-      "https://kulturhusetstadsteatern.se/konserter/skitarg",
-      "https://kulturhusetstadsteatern.se/konserter/hederos-hellberg",
-      "https://kulturhusetstadsteatern.se/konserter/rise-of-valkyries-fest",
-      "https://kulturhusetstadsteatern.se/konserter/murder-squad",
-      "https://kulturhusetstadsteatern.se/konserter/kozak-siromaha",
-      "https://kulturhusetstadsteatern.se/konserter/diset",
-      "https://kulturhusetstadsteatern.se/konserter/pussy-riot-riot-days",
-      "https://kulturhusetstadsteatern.se/konserter/isaiah-sharkey",
-      "https://kulturhusetstadsteatern.se/konserter/knower-x-norrbotten-big-band",
-      "https://kulturhusetstadsteatern.se/konserter/ibrahim-maalouf",
-      "https://kulturhusetstadsteatern.se/konserter/john-cooper-clarke",
-      "https://kulturhusetstadsteatern.se/konserter/teodor-wolgers-episod-i-vikens-kapell",
-      "https://kulturhusetstadsteatern.se/konserter/lastkaj-14",
-      "https://kulturhusetstadsteatern.se/konserter/lisa-miskovsky",
-      "https://kulturhusetstadsteatern.se/konserter/knogjarn",
-      "https://kulturhusetstadsteatern.se/konserter/abu-nein-christ-vs-warhol",
-      "https://kulturhusetstadsteatern.se/konserter/kaliffa",
-    ];
+    console.log("=== BATCH 7: Kulturhuset (auto-discover) ===");
 
-    // Check which artists already exist in DB to skip them
+    // Step 1: scrape listing page to get all concert URLs
+    let kulturhusetUrls: string[] = [];
+    try {
+      const listingRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://kulturhusetstadsteatern.se/konserter/",
+          formats: ["links"],
+          onlyMainContent: false,
+          waitFor: 6000,
+        }),
+      });
+      const listingData = await listingRes.json();
+      const allLinks: string[] = listingData?.data?.links || listingData?.links || [];
+      kulturhusetUrls = allLinks.filter((l: string) =>
+        l.startsWith("https://kulturhusetstadsteatern.se/konserter/") &&
+        l !== "https://kulturhusetstadsteatern.se/konserter/"
+      );
+      console.log(`Kulturhuset: discovered ${kulturhusetUrls.length} concert URLs`);
+    } catch (err) {
+      console.error("Failed to discover Kulturhuset URLs:", err);
+    }
+
+    // Step 2: skip artists already in DB
     const { data: existingKulturhuset } = await supabase
       .from("concerts")
       .select("artist")
@@ -538,8 +543,31 @@ Deno.serve(async (req) => {
     await upsertBatch(batch7);
     }
 
+    // ==================== BATCH 8: Resident Advisor Stockholm ====================
+    if (shouldRun(8)) {
+    console.log("=== BATCH 8: Resident Advisor Stockholm ===");
+    // RA paginates via ?page=N
+    const raPages = Array.from({ length: 5 }, (_, i) => i + 1);
+    const batch8 = await scrapeBatch(
+      raPages.map((p) => ({
+        name: `RA Stockholm p${p}`,
+        fn: () => scrapeSource(
+          firecrawlKey,
+          p === 1
+            ? "https://ra.co/events/se/stockholm"
+            : `https://ra.co/events/se/stockholm?page=${p}`,
+          "Resident Advisor",
+          "concert",
+          { waitFor: 8000, onlyMainContent: false }
+        ),
+      }))
+    );
+    allConcerts.push(...batch8);
+    await upsertBatch(batch8);
+    }
+
     // ==================== Image backfill ====================
-    if (shouldRun(8) || targetBatch === null) {
+    if (shouldRun(9) || targetBatch === null) {
     console.log("=== Image backfill ===");
     const dedupedAll = deduplicateConcerts(allConcerts);
     if (lovableApiKey) {
@@ -577,7 +605,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Scraped ${allConcerts.length} events across 6 batches, upserted ${totalUpserted}`,
+        message: `Scraped ${allConcerts.length} events across 8 batches, upserted ${totalUpserted}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
