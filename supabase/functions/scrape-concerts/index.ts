@@ -28,6 +28,28 @@ interface ScrapedConcert {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// iTunes Search API for artist images (free, no auth needed)
+const artistImageCache = new Map<string, string | null>();
+
+async function lookupArtistImage(artist: string): Promise<string | null> {
+  const cleanName = artist.split(/[:\-–—|(]/)[0].trim();
+  const cacheKey = cleanName.toLowerCase();
+  if (artistImageCache.has(cacheKey)) return artistImageCache.get(cacheKey)!;
+
+  try {
+    const res = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=musicArtist&limit=1`
+    );
+    const data = await res.json();
+    const url = data?.results?.[0]?.artworkUrl100?.replace("100x100", "600x600") || null;
+    artistImageCache.set(cacheKey, url);
+    return url;
+  } catch {
+    artistImageCache.set(cacheKey, null);
+    return null;
+  }
+}
+
 // Extraction prompt used by Firecrawl's LLM extraction
 function getExtractionPrompt(eventCategory: string, sourceName: string): string {
   const categoryDesc = eventCategory === "comedy"
@@ -230,6 +252,12 @@ Deno.serve(async (req) => {
       const deduped = deduplicateConcerts(concerts);
       let count = 0;
       for (const concert of deduped) {
+        // Look up artist image from iTunes if no image from scraper
+        let imageUrl = concert.image_url;
+        if (!imageUrl && concert.event_type !== "comedy") {
+          imageUrl = await lookupArtistImage(concert.artist);
+        }
+
         const { error } = await supabase.from("concerts").upsert(
           {
             artist: concert.artist,
@@ -238,7 +266,7 @@ Deno.serve(async (req) => {
             ticket_url: concert.ticket_url,
             ticket_sale_date: concert.ticket_sale_date,
             tickets_available: concert.tickets_available,
-            image_url: concert.image_url,
+            image_url: imageUrl,
             event_type: concert.event_type,
             source: concert.source,
             source_url: concert.source_url,
