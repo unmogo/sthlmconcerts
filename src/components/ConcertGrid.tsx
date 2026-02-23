@@ -14,11 +14,31 @@ interface ConcertGridProps {
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
   filter: FilterType;
+  searchQuery: string;
 }
 
-// Strip tour names/subtitles for grouping (e.g. "Sombr: The Tour" → "sombr")
+// Venue alias normalization
+const VENUE_ALIASES: Record<string, string> = {
+  "friends arena": "Strawberry Arena",
+  "strawberry arena": "Strawberry Arena",
+  "ericsson globe": "Avicii Arena",
+  "avicii arena": "Avicii Arena",
+  "globen": "Avicii Arena",
+  "hovet": "Hovet",
+  "annexet": "Annexet",
+};
+
+// Strip tour names/subtitles for grouping
 const normalizeForGroup = (s: string) =>
-  s.split(/[:\-–—|]/)[0].trim().toLowerCase();
+  s.replace(/\s*[\(\[].*?[\)\]]/g, "")  // remove (feat. X), [Live], etc.
+   .replace(/\s+[wW]\/\s+.*/g, "")       // remove "w/ Guest"
+   .replace(/\s*\+\s+förband.*/gi, "")    // remove "+ förband"
+   .split(/[:\-–—|]/)[0].trim().toLowerCase();
+
+const normalizeVenueName = (venue: string): string => {
+  const lower = venue.toLowerCase().trim();
+  return VENUE_ALIASES[lower] || venue;
+};
 
 // Deduplicate concerts: same normalized artist + venue + exact date → keep one (shortest name)
 function deduplicateConcerts(concerts: Concert[]): Concert[] {
@@ -58,7 +78,7 @@ function groupConcerts(concerts: Concert[]): { primary: Concert; extras: Concert
   return result;
 }
 
-export function ConcertGrid({ selectedIds, onToggleSelect, filter }: ConcertGridProps) {
+export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }: ConcertGridProps) {
   const { data: concerts, isLoading, error } = useQuery({
     queryKey: ["concerts"],
     queryFn: fetchConcerts,
@@ -78,8 +98,15 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter }: ConcertGrid
     } else {
       filtered = concerts.filter((c) => c.event_type === filter);
     }
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (c) => c.artist.toLowerCase().includes(q) || normalizeVenueName(c.venue).toLowerCase().includes(q)
+      );
+    }
     return groupConcerts(filtered);
-  }, [concerts, filter, favoriteIds]);
+  }, [concerts, filter, favoriteIds, searchQuery]);
 
   if (isLoading) {
     return (

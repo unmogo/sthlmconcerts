@@ -26,7 +26,16 @@ export function useFavorites() {
         .insert({ user_id: user!.id, concert_id: concertId });
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["favorites", user?.id] }),
+    onMutate: async (concertId) => {
+      await queryClient.cancelQueries({ queryKey: ["favorites", user?.id] });
+      const prev = queryClient.getQueryData<string[]>(["favorites", user?.id]);
+      queryClient.setQueryData(["favorites", user?.id], (old: string[] = []) => [...old, concertId]);
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["favorites", user?.id], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["favorites", user?.id] }),
   });
 
   const removeFavorite = useMutation({
@@ -38,7 +47,16 @@ export function useFavorites() {
         .eq("concert_id", concertId);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["favorites", user?.id] }),
+    onMutate: async (concertId) => {
+      await queryClient.cancelQueries({ queryKey: ["favorites", user?.id] });
+      const prev = queryClient.getQueryData<string[]>(["favorites", user?.id]);
+      queryClient.setQueryData(["favorites", user?.id], (old: string[] = []) => old.filter((id) => id !== concertId));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["favorites", user?.id], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["favorites", user?.id] }),
   });
 
   const toggleFavorite = (concertId: string) => {

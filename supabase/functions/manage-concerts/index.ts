@@ -3,8 +3,46 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+async function verifyAdmin(req: Request): Promise<{ authorized: boolean; error?: string }> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return { authorized: false, error: "Missing authorization" };
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: authHeader } } }
+  );
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data, error } = await supabase.auth.getClaims(token);
+  if (error || !data?.claims) {
+    return { authorized: false, error: "Invalid token" };
+  }
+
+  const userId = data.claims.sub;
+  const serviceSupabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  const { data: roleData } = await serviceSupabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .maybeSingle();
+
+  if (!roleData) {
+    return { authorized: false, error: "Not an admin" };
+  }
+
+  return { authorized: true };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,6 +50,15 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Verify admin for all actions
+    const auth = await verifyAdmin(req);
+    if (!auth.authorized) {
+      return new Response(
+        JSON.stringify({ success: false, message: auth.error }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -58,7 +105,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // SCRAPE URL - scrape a single URL and extract event info
+    // SCRAPE URL
     if (action === "scrape-url" && body.url) {
       const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
       const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
@@ -69,7 +116,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Scrape the URL
       const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
         method: "POST",
         headers: {
@@ -94,7 +140,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Extract with AI
       const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -108,10 +153,7 @@ Deno.serve(async (req) => {
               role: "system",
               content: `Extract ONE event from this page. Return a JSON object with: artist (clean name, no tour subtitle), venue (short name), date (ISO 8601, year 2026 if ambiguous, default time 19:00), ticket_url, image_url, event_type ("concert" or "comedy"). Return ONLY valid JSON object.`,
             },
-            {
-              role: "user",
-              content: `URL: ${body.url}\n\n${markdown.substring(0, 15000)}`,
-            },
+            { role: "user", content: `URL: ${body.url}\n\n${markdown.substring(0, 15000)}` },
           ],
           temperature: 0.1,
         }),
