@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const START_TIME = Date.now();
-const TIME_BUDGET_MS = 300_000; // 5 minutes – scraper runs weekly so longer is fine
+const TIME_BUDGET_MS = 300_000; // 5 minutes
 
 function hasTimeBudget(): boolean {
   return Date.now() - START_TIME < TIME_BUDGET_MS;
@@ -50,7 +50,6 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
   }
 }
 
-// Extraction prompt used by Firecrawl's LLM extraction
 function getExtractionPrompt(eventCategory: string, sourceName: string): string {
   const categoryDesc = eventCategory === "comedy"
     ? "Extract ONLY stand-up comedy shows and comedy specials. EXCLUDE music concerts, theater, sports."
@@ -120,7 +119,6 @@ async function scrapeSource(
       return [];
     }
 
-    // Get extracted JSON data
     const jsonData = data?.data?.json || data?.json;
     const links = data?.data?.links || data?.links || [];
     const imageLinks = Array.isArray(links)
@@ -152,30 +150,9 @@ async function scrapeSource(
   }
 }
 
-async function scrapePaginated(
-  apiKey: string,
-  baseUrl: string,
-  sourceName: string,
-  eventCategory: string,
-  maxPages: number = 10
-): Promise<ScrapedConcert[]> {
-  const all: ScrapedConcert[] = [];
-  const firstPage = await scrapeSource(apiKey, baseUrl, sourceName, eventCategory);
-  if (firstPage.length === 0) return all;
-  all.push(...firstPage);
-
-  for (let page = 2; page <= maxPages; page++) {
-    if (!hasTimeBudget()) break;
-    const url = `${baseUrl}page/${page}/`;
-    const results = await scrapeSource(apiKey, url, sourceName, eventCategory);
-    if (results.length === 0) break;
-    all.push(...results);
-  }
-  return all;
-}
-
 async function scrapeBatch(
-  tasks: Array<{ fn: () => Promise<ScrapedConcert[]>; name: string }>
+  tasks: Array<{ fn: () => Promise<ScrapedConcert[]>; name: string }>,
+  delayMs: number = 1500
 ): Promise<ScrapedConcert[]> {
   const all: ScrapedConcert[] = [];
   for (let i = 0; i < tasks.length; i++) {
@@ -183,7 +160,7 @@ async function scrapeBatch(
       console.log(`Time budget exceeded, stopping batch at task ${i}/${tasks.length}`);
       break;
     }
-    if (i > 0) await delay(3000);
+    if (i > 0) await delay(delayMs);
     try {
       const result = await tasks[i].fn();
       console.log(`✓ ${tasks[i].name}: ${result.length} events`);
@@ -253,7 +230,6 @@ Deno.serve(async (req) => {
       const deduped = deduplicateConcerts(concerts);
       let count = 0;
       for (const concert of deduped) {
-        // Look up artist image from iTunes if no image from scraper
         let imageUrl = concert.image_url;
         if (!imageUrl && concert.event_type !== "comedy") {
           imageUrl = await lookupArtistImage(concert.artist);
@@ -284,11 +260,20 @@ Deno.serve(async (req) => {
       console.log(`Upserted ${count} from batch of ${concerts.length}`);
     }
 
-    // ==================== BATCH 1: Main Stockholm venues ====================
+    // ==================== BATCH 1: Quick high-value sources ====================
+    // RA, All Things Live, Gröna Lund, Södra Teatern — single-page scrapes first
     if (shouldRun(1) && hasTimeBudget()) {
-      console.log("=== BATCH 1: Main Stockholm venues ===");
+      console.log("=== BATCH 1: Priority single-page sources ===");
+
+      const scrollActions: any[] = [];
+      for (let i = 0; i < 10; i++) {
+        scrollActions.push({ type: "scroll", direction: "down" });
+        scrollActions.push({ type: "wait", milliseconds: 2000 });
+      }
+
       const batch1 = await scrapeBatch([
-        { name: "Cirkus", fn: () => scrapePaginated(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert", 10) },
+        { name: "All Things Live Stockholm", fn: () => scrapeSource(firecrawlKey, "https://allthingslive.se/event?city=Stockholm", "All Things Live", "concert", { waitFor: 5000, onlyMainContent: false, actions: scrollActions }) },
+        { name: "RA Stockholm", fn: () => scrapeSource(firecrawlKey, "https://ra.co/events/se/stockholm", "Resident Advisor", "concert", { waitFor: 10000, onlyMainContent: false }) },
         { name: "Gröna Lund", fn: () => scrapeSource(firecrawlKey, "https://www.gronalund.com/en/concerts", "Gröna Lund", "concert", { waitFor: 10000, onlyMainContent: false }) },
         { name: "Södra Teatern", fn: () => scrapeSource(firecrawlKey, "https://sodrateatern.com/", "Södra Teatern", "concert", { waitFor: 8000, onlyMainContent: false }) },
       ]);
@@ -296,161 +281,102 @@ Deno.serve(async (req) => {
       await upsertBatch(batch1);
     }
 
-    // ==================== BATCH 2: Stockholm Live + AXS ====================
+    // ==================== BATCH 2: Cirkus (max 5 pages) ====================
     if (shouldRun(2) && hasTimeBudget()) {
-      console.log("=== BATCH 2: Stockholm Live + AXS ===");
-      const batch2 = await scrapeBatch([
-        { name: "Stockholm Live p1", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/", "Stockholm Live", "concert") },
-        { name: "Stockholm Live p2", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/2/", "Stockholm Live", "concert") },
-        { name: "Stockholm Live p3", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/3/", "Stockholm Live", "concert") },
-        { name: "Stockholm Live p4", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/4/", "Stockholm Live", "concert") },
-        { name: "Stockholm Live p5", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/5/", "Stockholm Live", "concert") },
-        { name: "AXS Avicii Arena", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/1702/avicii-arena", "AXS", "concert") },
-        { name: "AXS Hovet", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/31697/hovet", "AXS", "concert") },
-        { name: "AXS Strawberry Arena", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/141684/strawberry-arena", "AXS", "concert") },
-      ]);
+      console.log("=== BATCH 2: Cirkus ===");
+      const cirkusTasks = [
+        { name: "Cirkus p1", fn: () => scrapeSource(firecrawlKey, "https://cirkus.se/sv/evenemang/", "Cirkus", "concert") },
+        { name: "Cirkus p2", fn: () => scrapeSource(firecrawlKey, "https://cirkus.se/sv/evenemang/page/2/", "Cirkus", "concert") },
+        { name: "Cirkus p3", fn: () => scrapeSource(firecrawlKey, "https://cirkus.se/sv/evenemang/page/3/", "Cirkus", "concert") },
+        { name: "Cirkus p4", fn: () => scrapeSource(firecrawlKey, "https://cirkus.se/sv/evenemang/page/4/", "Cirkus", "concert") },
+        { name: "Cirkus p5", fn: () => scrapeSource(firecrawlKey, "https://cirkus.se/sv/evenemang/page/5/", "Cirkus", "concert") },
+      ];
+      const batch2 = await scrapeBatch(cirkusTasks);
       allConcerts.push(...batch2);
       await upsertBatch(batch2);
     }
 
-    // ==================== BATCH 3: Konserthuset ====================
+    // ==================== BATCH 3: Stockholm Live (3 pages) + AXS ====================
     if (shouldRun(3) && hasTimeBudget()) {
-      console.log("=== BATCH 3: Konserthuset ===");
-      const months = ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12"];
-      const batch3 = await scrapeBatch(
-        months.map((m) => ({
-          name: `Konserthuset ${m}`,
-          fn: () => scrapeSource(firecrawlKey, `https://www.konserthuset.se/program-och-biljetter/kalender/?month=${m}`, "Konserthuset", "concert", { waitFor: 5000 }),
-        }))
-      );
+      console.log("=== BATCH 3: Stockholm Live + AXS ===");
+      const batch3 = await scrapeBatch([
+        { name: "Stockholm Live p1", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/", "Stockholm Live", "concert") },
+        { name: "Stockholm Live p2", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/2/", "Stockholm Live", "concert") },
+        { name: "Stockholm Live p3", fn: () => scrapeSource(firecrawlKey, "https://stockholmlive.com/evenemang/page/3/", "Stockholm Live", "concert") },
+        { name: "AXS Avicii Arena", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/1702/avicii-arena", "AXS", "concert") },
+        { name: "AXS Hovet", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/31697/hovet", "AXS", "concert") },
+        { name: "AXS Strawberry Arena", fn: () => scrapeSource(firecrawlKey, "https://www.axs.com/se/venues/141684/strawberry-arena", "AXS", "concert") },
+      ]);
       allConcerts.push(...batch3);
       await upsertBatch(batch3);
     }
 
-    // ==================== BATCH 4: Ticketmaster ====================
+    // ==================== BATCH 4: Ticketmaster (2 pages) ====================
     if (shouldRun(4) && hasTimeBudget()) {
       console.log("=== BATCH 4: Ticketmaster ===");
       const batch4 = await scrapeBatch([
         { name: "Ticketmaster p1", fn: () => scrapeSource(firecrawlKey, "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ", "Ticketmaster", "concert", { waitFor: 8000, onlyMainContent: false }) },
         { name: "Ticketmaster p2", fn: () => scrapeSource(firecrawlKey, "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=2", "Ticketmaster", "concert", { waitFor: 8000, onlyMainContent: false }) },
-        { name: "Ticketmaster p3", fn: () => scrapeSource(firecrawlKey, "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=3", "Ticketmaster", "concert", { waitFor: 8000, onlyMainContent: false }) },
       ]);
       allConcerts.push(...batch4);
       await upsertBatch(batch4);
     }
 
-    // ==================== BATCH 5: Live Nation (50 pages) ====================
+    // ==================== BATCH 5: Live Nation (10 pages) ====================
     if (shouldRun(5) && hasTimeBudget()) {
       console.log("=== BATCH 5: Live Nation ===");
-      const totalLNPages = 50;
-      const lnSubBatchSize = 10;
-      for (let start = 1; start <= totalLNPages && hasTimeBudget(); start += lnSubBatchSize) {
-        const end = Math.min(start + lnSubBatchSize - 1, totalLNPages);
-        const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
-        console.log(`Live Nation sub-batch pages ${start}-${end}`);
-        const subBatch = await scrapeBatch(
-          pages.map((p) => ({
-            name: `Live Nation p${p}`,
-            fn: () => scrapeSource(firecrawlKey, `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`, "Live Nation", "concert"),
-          }))
-        );
-        allConcerts.push(...subBatch);
-        await upsertBatch(subBatch);
-      }
+      const lnPages = Array.from({ length: 10 }, (_, i) => i + 1);
+      const batch5 = await scrapeBatch(
+        lnPages.map((p) => ({
+          name: `Live Nation p${p}`,
+          fn: () => scrapeSource(firecrawlKey, `https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=${p}`, "Live Nation", "concert"),
+        }))
+      );
+      allConcerts.push(...batch5);
+      await upsertBatch(batch5);
     }
 
-    // ==================== BATCH 6: Comedy ====================
+    // ==================== BATCH 6: Konserthuset (4 upcoming months) ====================
     if (shouldRun(6) && hasTimeBudget()) {
-      console.log("=== BATCH 6: Comedy ===");
-      const batch6 = await scrapeBatch([
-        { name: "Nöjesteatern", fn: () => scrapeSource(firecrawlKey, "https://www.nojesteatern.se/program/", "Nöjesteatern", "comedy") },
-        { name: "Hyvens", fn: () => scrapeSource(firecrawlKey, "https://www.hyvens.se/program/", "Hyvens", "comedy") },
-        { name: "Live Nation Comedy", fn: () => scrapeSource(firecrawlKey, "https://www.livenation.se/search?query=comedy+stockholm", "Live Nation", "comedy") },
-      ]);
+      console.log("=== BATCH 6: Konserthuset ===");
+      const now = new Date();
+      const months: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+      const batch6 = await scrapeBatch(
+        months.map((m) => ({
+          name: `Konserthuset ${m}`,
+          fn: () => scrapeSource(firecrawlKey, `https://www.konserthuset.se/program-och-biljetter/kalender/?month=${m}`, "Konserthuset", "concert", { waitFor: 5000 }),
+        }))
+      );
       allConcerts.push(...batch6);
       await upsertBatch(batch6);
     }
 
-    // ==================== BATCH 7: Kulturhuset (auto-discover) ====================
+    // ==================== BATCH 7: Comedy ====================
     if (shouldRun(7) && hasTimeBudget()) {
-      console.log("=== BATCH 7: Kulturhuset (auto-discover) ===");
-      let kulturhusetUrls: string[] = [];
-      try {
-        const listingRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ url: "https://kulturhusetstadsteatern.se/konserter/", formats: ["links"], onlyMainContent: false, waitFor: 6000 }),
-        });
-        const listingData = await listingRes.json();
-        const allLinks: string[] = listingData?.data?.links || listingData?.links || [];
-        kulturhusetUrls = allLinks.filter((l: string) => l.startsWith("https://kulturhusetstadsteatern.se/konserter/") && l !== "https://kulturhusetstadsteatern.se/konserter/");
-        console.log(`Kulturhuset: discovered ${kulturhusetUrls.length} concert URLs`);
-      } catch (err) {
-        console.error("Failed to discover Kulturhuset URLs:", err);
-      }
-
-      const { data: existingKulturhuset } = await supabase
-        .from("concerts")
-        .select("artist")
-        .or("source.eq.Kulturhuset Stadsteatern,venue.ilike.%kulturhuset%");
-      const existingArtists = new Set((existingKulturhuset || []).map((c: any) => c.artist.toLowerCase()));
-
-      const missingUrls = kulturhusetUrls.filter((url) => {
-        const slug = url.split("/").pop() || "";
-        const artistGuess = slug.replace(/-/g, " ").toLowerCase();
-        return ![...existingArtists].some((a) => a.includes(artistGuess) || artistGuess.includes(a));
-      });
-
-      console.log(`Kulturhuset: ${kulturhusetUrls.length} total, ${missingUrls.length} to scrape`);
-      const pageSize = 4;
-      const startIdx = (targetPage - 1) * pageSize;
-      const pageUrls = missingUrls.slice(startIdx, startIdx + pageSize);
-
-      const batch7 = await scrapeBatch(
-        pageUrls.map((url) => ({
-          name: `Kulturhuset: ${url.split("/").pop()}`,
-          fn: () => scrapeSource(firecrawlKey, url, "Kulturhuset Stadsteatern", "concert", { waitFor: 5000 }),
-        }))
-      );
+      console.log("=== BATCH 7: Comedy ===");
+      const batch7 = await scrapeBatch([
+        { name: "Nöjesteatern", fn: () => scrapeSource(firecrawlKey, "https://www.nojesteatern.se/program/", "Nöjesteatern", "comedy") },
+        { name: "Hyvens", fn: () => scrapeSource(firecrawlKey, "https://www.hyvens.se/program/", "Hyvens", "comedy") },
+      ]);
       allConcerts.push(...batch7);
       await upsertBatch(batch7);
     }
 
-    // ==================== BATCH 8: Resident Advisor Stockholm ====================
+    // ==================== BATCH 8: RA Stockholm additional pages ====================
     if (shouldRun(8) && hasTimeBudget()) {
-      console.log("=== BATCH 8: Resident Advisor Stockholm ===");
-      const raPages = Array.from({ length: 5 }, (_, i) => i + 1);
+      console.log("=== BATCH 8: RA Stockholm additional pages ===");
       const batch8 = await scrapeBatch(
-        raPages.map((p) => ({
+        [2, 3].map((p) => ({
           name: `RA Stockholm p${p}`,
-          fn: () => scrapeSource(firecrawlKey, p === 1 ? "https://ra.co/events/se/stockholm" : `https://ra.co/events/se/stockholm?page=${p}`, "Resident Advisor", "concert", { waitFor: 8000, onlyMainContent: false }),
+          fn: () => scrapeSource(firecrawlKey, `https://ra.co/events/se/stockholm?page=${p}`, "Resident Advisor", "concert", { waitFor: 10000, onlyMainContent: false }),
         }))
       );
       allConcerts.push(...batch8);
       await upsertBatch(batch8);
-    }
-
-    // ==================== BATCH 9: All Things Live ====================
-    if (shouldRun(9) && hasTimeBudget()) {
-      console.log("=== BATCH 9: All Things Live ===");
-      // Scroll to bottom multiple times to load all lazy-loaded events
-      const scrollActions = [];
-      for (let i = 0; i < 10; i++) {
-        scrollActions.push({ type: "scroll", direction: "down" });
-        scrollActions.push({ type: "wait", milliseconds: 2000 });
-      }
-      const batch9 = await scrapeBatch([
-        {
-          name: "All Things Live Stockholm",
-          fn: () => scrapeSource(firecrawlKey, "https://allthingslive.se/event?city=Stockholm", "All Things Live", "concert", {
-            waitFor: 5000,
-            onlyMainContent: false,
-            actions: scrollActions,
-          }),
-        },
-      ]);
-      allConcerts.push(...batch9);
-      await upsertBatch(batch9);
     }
 
     console.log(`Total scraped: ${allConcerts.length}, Total upserted: ${totalUpserted}`);
