@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const START_TIME = Date.now();
-const TIME_BUDGET_MS = 120_000;
+const TIME_BUDGET_MS = 300_000; // 5 minutes – scraper runs weekly so longer is fine
 
 function hasTimeBudget(): boolean {
   return Date.now() - START_TIME < TIME_BUDGET_MS;
@@ -90,7 +90,7 @@ async function scrapeSource(
   url: string,
   sourceName: string,
   eventCategory: string,
-  options?: { waitFor?: number; onlyMainContent?: boolean }
+  options?: { waitFor?: number; onlyMainContent?: boolean; actions?: any[] }
 ): Promise<ScrapedConcert[]> {
   console.log(`Scraping ${sourceName}: ${url}`);
 
@@ -110,6 +110,7 @@ async function scrapeSource(
         },
         onlyMainContent: options?.onlyMainContent ?? true,
         waitFor: options?.waitFor ?? 5000,
+        ...(options?.actions ? { actions: options.actions } : {}),
       }),
     });
 
@@ -427,6 +428,29 @@ Deno.serve(async (req) => {
       );
       allConcerts.push(...batch8);
       await upsertBatch(batch8);
+    }
+
+    // ==================== BATCH 9: All Things Live ====================
+    if (shouldRun(9) && hasTimeBudget()) {
+      console.log("=== BATCH 9: All Things Live ===");
+      // Scroll to bottom multiple times to load all lazy-loaded events
+      const scrollActions = [];
+      for (let i = 0; i < 10; i++) {
+        scrollActions.push({ type: "scroll", direction: "down" });
+        scrollActions.push({ type: "wait", milliseconds: 2000 });
+      }
+      const batch9 = await scrapeBatch([
+        {
+          name: "All Things Live Stockholm",
+          fn: () => scrapeSource(firecrawlKey, "https://allthingslive.se/event?city=Stockholm", "All Things Live", "concert", {
+            waitFor: 5000,
+            onlyMainContent: false,
+            actions: scrollActions,
+          }),
+        },
+      ]);
+      allConcerts.push(...batch9);
+      await upsertBatch(batch9);
     }
 
     console.log(`Total scraped: ${allConcerts.length}, Total upserted: ${totalUpserted}`);
