@@ -91,6 +91,39 @@ export type Database = {
           },
         ]
       }
+      scrape_log: {
+        Row: {
+          batch: number | null
+          created_at: string | null
+          duration_ms: number | null
+          error: string | null
+          events_found: number | null
+          events_upserted: number | null
+          id: string
+          source: string | null
+        }
+        Insert: {
+          batch?: number | null
+          created_at?: string | null
+          duration_ms?: number | null
+          error?: string | null
+          events_found?: number | null
+          events_upserted?: number | null
+          id?: string
+          source?: string | null
+        }
+        Update: {
+          batch?: number | null
+          created_at?: string | null
+          duration_ms?: number | null
+          error?: string | null
+          events_found?: number | null
+          events_upserted?: number | null
+          id?: string
+          source?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -114,6 +147,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_concerts: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
