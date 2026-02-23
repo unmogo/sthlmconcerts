@@ -81,14 +81,11 @@ async function scrapeSource(
       },
       body: JSON.stringify({
         url,
-        formats: [
-          "links",
-          {
-            type: "json",
-            schema: concertJsonSchema,
-            prompt: getExtractionPrompt(eventCategory, sourceName),
-          },
-        ],
+        formats: ["links", "json"],
+        jsonOptions: {
+          schema: concertJsonSchema,
+          prompt: getExtractionPrompt(eventCategory, sourceName),
+        },
         onlyMainContent: options?.onlyMainContent ?? true,
         waitFor: options?.waitFor ?? 5000,
       }),
