@@ -12,7 +12,7 @@
 Current venues being normalized: "Stora Scen" → "Gröna Lund", "Friends Arena" → "Strawberry Arena".  
 Are there other venue aliases we should add? E.g., "Annexet" vs "Hovet", "Avicii Arena" vs "Globen"?
 
-**Answer:** <!-- answer here -->
+**Answer:** <!-- answer here --> there are others like Kägelbanan Södra Teatern
 
 ### Q2: Image fallback priority
 **Asked:** 2026-02-24  
