@@ -47,6 +47,7 @@ export async function addConcert(concert: {
   ticket_url?: string | null;
   image_url?: string | null;
   event_type?: string;
+  tickets_available?: boolean;
 }): Promise<void> {
   const { error } = await supabase.functions.invoke("manage-concerts", {
     body: { action: "insert", concert },

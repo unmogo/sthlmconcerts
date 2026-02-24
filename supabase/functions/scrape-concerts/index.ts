@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const START_TIME = Date.now();
-const TIME_BUDGET_MS = 240_000; // 4 minutes (safe margin under 5-min platform limit)
+const TIME_BUDGET_MS = 240_000;
 
 function hasTimeBudget(): boolean {
   return Date.now() - START_TIME < TIME_BUDGET_MS;
@@ -28,7 +28,7 @@ interface ScrapedConcert {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// iTunes Search API for artist images
+// ==================== ARTIST IMAGE LOOKUP (MusicBrainz + Wikipedia) ====================
 const artistImageCache = new Map<string, string | null>();
 
 async function lookupArtistImage(artist: string): Promise<string | null> {
@@ -37,16 +37,56 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
   if (artistImageCache.has(cacheKey)) return artistImageCache.get(cacheKey)!;
 
   try {
-    const res = await fetch(
+    // Step 1: Search MusicBrainz for the artist
+    const mbRes = await fetch(
+      `https://musicbrainz.org/ws/2/artist/?query=artist:${encodeURIComponent(cleanName)}&limit=1&fmt=json`,
+      { headers: { "User-Agent": "SthlmConcerts/1.0 (contact@sthlmconcerts.app)" } }
+    );
+    const mbData = await mbRes.json();
+    const mbArtist = mbData?.artists?.[0];
+    if (!mbArtist?.id) {
+      artistImageCache.set(cacheKey, null);
+      return null;
+    }
+
+    // Step 2: Get artist relations (URL rels) to find Wikipedia/Wikidata
+    const relRes = await fetch(
+      `https://musicbrainz.org/ws/2/artist/${mbArtist.id}?inc=url-rels&fmt=json`,
+      { headers: { "User-Agent": "SthlmConcerts/1.0 (contact@sthlmconcerts.app)" } }
+    );
+    const relData = await relRes.json();
+    const relations = relData?.relations || [];
+
+    // Try Wikidata first for a reliable image
+    const wikidataRel = relations.find((r: any) => r.type === "wikidata");
+    if (wikidataRel?.url?.resource) {
+      const wikidataId = wikidataRel.url.resource.split("/").pop();
+      const wdRes = await fetch(
+        `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${wikidataId}&property=P18&format=json`
+      );
+      const wdData = await wdRes.json();
+      const imageName = wdData?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+      if (imageName) {
+        const filename = encodeURIComponent(imageName.replace(/ /g, "_"));
+        const md5 = await md5Hash(imageName.replace(/ /g, "_"));
+        const imageUrl = `https://upload.wikimedia.org/wikipedia/commons/thumb/${md5[0]}/${md5.slice(0, 2)}/${filename}/500px-${filename}`;
+        artistImageCache.set(cacheKey, imageUrl);
+        return imageUrl;
+      }
+    }
+
+    // Fallback: iTunes album art
+    const itunesRes = await fetch(
       `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=album&limit=1`
     );
-    const data = await res.json();
-    const artworkUrl = data?.results?.[0]?.artworkUrl100;
+    const itunesData = await itunesRes.json();
+    const artworkUrl = itunesData?.results?.[0]?.artworkUrl100;
     if (artworkUrl) {
       const url = artworkUrl.replace("100x100", "600x600");
       artistImageCache.set(cacheKey, url);
       return url;
     }
+
     artistImageCache.set(cacheKey, null);
     return null;
   } catch {
@@ -54,6 +94,84 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
     return null;
   }
 }
+
+// Simple MD5 hash for Wikimedia Commons file paths
+async function md5Hash(input: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest("MD5", data).catch(() => null);
+  if (hashBuffer) {
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Fallback: simple hash
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) - hash) + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16).padStart(32, "0");
+}
+
+// ==================== DATA QUALITY FILTERS ====================
+
+// Venue normalization map: sub-venues → parent venue
+const VENUE_NORMALIZATION: Record<string, string> = {
+  "stora scen": "Gröna Lund",
+  "stora scenen": "Gröna Lund",
+  "lilla scenen": "Gröna Lund",
+  "gröna lund stora scen": "Gröna Lund",
+  "gröna lund lilla scen": "Gröna Lund",
+  "friends arena": "Strawberry Arena",
+  "tele2 arena": "Strawberry Arena",
+};
+
+function normalizeVenueName(venue: string): string {
+  const lower = venue.toLowerCase().trim();
+  for (const [key, normalized] of Object.entries(VENUE_NORMALIZATION)) {
+    if (lower.includes(key)) return normalized;
+  }
+  // Remove city suffixes like ", Stockholm"
+  return venue.replace(/,\s*(stockholm|sweden|sverige)$/i, "").trim();
+}
+
+// Stockholm venue whitelist keywords — if venue doesn't match any, flag it
+const STOCKHOLM_VENUE_KEYWORDS = [
+  "stockholm", "gröna lund", "grona lund", "cirkus", "globen", "avicii arena",
+  "hovet", "strawberry arena", "konserthuset", "södra teatern", "sodra teatern",
+  "kulturhuset", "annexet", "debaser", "berns", "nalen", "münchenbryggeriet",
+  "munchenbryggeriet", "filadelfia", "fållan", "fallan", "vasateatern",
+  "göta lejon", "gota lejon", "chinateatern", "rival", "scandinavium",
+  "ericsson globe", "tele2", "friends arena", "stockholm live",
+  "a]", "kungsträdgården", "kungstradgarden", "skansen", "grönan",
+  "lilla scen", "stora scen", "sjöhistoriska", "nöjesteatern", "hyvens",
+  "slaktkyrkan", "kraken", "fryshuset", "arenan", "trädgården", "tradgarden",
+  "under bron", "sthlm", "kolingsborg", "skybar", "fasching", "stampen",
+  "glen miller café", "jazzclub", "blå dörren", "kagelbanan",
+];
+
+function isStockholmVenue(venue: string): boolean {
+  const lower = venue.toLowerCase();
+  return STOCKHOLM_VENUE_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// Invalid/dummy URL patterns
+function isValidTicketUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  if (lower.includes("example.com")) return false;
+  if (lower.includes("id-preview--")) return false;
+  if (lower.includes("lovable.app")) return false;
+  if (lower.includes("localhost")) return false;
+  if (lower === "#" || lower === "/") return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ==================== EXTRACTION ====================
 
 function getExtractionPrompt(eventCategory: string, sourceName: string): string {
   const categoryDesc = eventCategory === "comedy"
@@ -63,6 +181,7 @@ function getExtractionPrompt(eventCategory: string, sourceName: string): string 
   return `${categoryDesc}
 Clean up artist names: remove tour names/subtitles (e.g. "Artist: TOUR NAME" → "Artist").
 Normalize venue names to shortest recognizable form, remove city suffixes and sub-venues.
+IMPORTANT: Only extract events happening in Stockholm, Sweden. EXCLUDE events in other cities (Malmö, Göteborg, etc.).
 Current year is 2026. If no time given, use 19:00. Extract ALL events including those not yet on sale.
 Source: ${sourceName}`;
 }
@@ -125,10 +244,6 @@ async function scrapeSource(
     }
 
     const jsonData = data?.data?.json || data?.json;
-    const links = data?.data?.links || data?.links || [];
-    const imageLinks = Array.isArray(links)
-      ? links.filter((l: string) => /\.(jpg|jpeg|png|webp|avif)/i.test(l))
-      : [];
 
     if (!jsonData?.events || !Array.isArray(jsonData.events)) {
       console.log(`No events extracted from ${sourceName}`);
@@ -137,18 +252,27 @@ async function scrapeSource(
 
     console.log(`Extracted ${jsonData.events.length} events from ${sourceName}`);
 
-    return jsonData.events.map((c: any) => ({
-      artist: c.artist || "Unknown",
-      venue: c.venue || sourceName,
-      date: c.date || new Date().toISOString(),
-      ticket_url: c.ticket_url || null,
-      ticket_sale_date: c.ticket_sale_date || null,
-      tickets_available: c.tickets_available ?? false,
-      image_url: c.image_url || imageLinks[0] || null,
-      event_type: eventCategory,
-      source: sourceName,
-      source_url: url,
-    }));
+    return jsonData.events
+      .map((c: any) => ({
+        artist: c.artist || "Unknown",
+        venue: normalizeVenueName(c.venue || sourceName),
+        date: c.date || new Date().toISOString(),
+        ticket_url: isValidTicketUrl(c.ticket_url) ? c.ticket_url : null,
+        ticket_sale_date: c.ticket_sale_date || null,
+        tickets_available: c.tickets_available ?? false,
+        image_url: c.image_url || null,
+        event_type: eventCategory,
+        source: sourceName,
+        source_url: url,
+      }))
+      .filter((c: ScrapedConcert) => {
+        // Filter out non-Stockholm venues
+        if (!isStockholmVenue(c.venue) && !isStockholmVenue(sourceName)) {
+          console.log(`Filtered non-Stockholm: ${c.artist} @ ${c.venue}`);
+          return false;
+        }
+        return true;
+      });
   } catch (err) {
     console.error(`Error scraping ${sourceName}:`, err);
     return [];
@@ -179,7 +303,7 @@ async function scrapeBatch(
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-zåäö0-9]/g, "");
 const normalizeArtist = (s: string) => normalize(s.split(/[:\-–—|]/)[0].trim());
-const normalizeVenue = (s: string) => normalize(s.split(/[,\-–—]/)[0].trim());
+const normalizeVenueKey = (s: string) => normalize(s.split(/[,\-–—]/)[0].trim());
 const dateOnly = (d: string) => {
   try { return new Date(d).toISOString().split("T")[0]; } catch { return d; }
 };
@@ -187,13 +311,18 @@ const dateOnly = (d: string) => {
 function deduplicateConcerts(concerts: ScrapedConcert[]): ScrapedConcert[] {
   const seen = new Map<string, ScrapedConcert>();
   for (const c of concerts) {
-    const key = `${normalizeArtist(c.artist)}|${normalizeVenue(c.venue)}|${dateOnly(c.date)}`;
+    const key = `${normalizeArtist(c.artist)}|${normalizeVenueKey(c.venue)}|${dateOnly(c.date)}`;
     if (!seen.has(key)) {
       seen.set(key, c);
     } else {
       const existing = seen.get(key)!;
-      if ((!existing.image_url && c.image_url) || (!existing.ticket_url && c.ticket_url) || (c.artist.length < existing.artist.length)) {
-        seen.set(key, { ...existing, ...c, image_url: c.image_url || existing.image_url, ticket_url: c.ticket_url || existing.ticket_url });
+      // Keep the one with more complete data
+      const existingScore = (existing.ticket_url ? 2 : 0) + (existing.image_url ? 1 : 0) + (existing.tickets_available ? 1 : 0);
+      const newScore = (c.ticket_url ? 2 : 0) + (c.image_url ? 1 : 0) + (c.tickets_available ? 1 : 0);
+      if (newScore > existingScore) {
+        seen.set(key, { ...c, image_url: c.image_url || existing.image_url });
+      } else {
+        seen.set(key, { ...existing, image_url: existing.image_url || c.image_url, ticket_url: existing.ticket_url || c.ticket_url });
       }
     }
   }
@@ -204,7 +333,6 @@ function deduplicateConcerts(concerts: ScrapedConcert[]): ScrapedConcert[] {
 const TOTAL_BATCHES = 24;
 
 function getLiveNationPages(batch: number): number[] {
-  // Batches 1-17: LN pages 1-3, 4-6, ..., 49-51
   const start = (batch - 1) * 3 + 1;
   const end = Math.min(start + 2, 50);
   if (start > 50) return [];
@@ -244,7 +372,7 @@ Deno.serve(async (req) => {
       if (body?.batch) targetBatch = Number(body.batch);
       if (body?.chain) chain = Boolean(body.chain);
       if (body?.page) targetPage = Number(body.page);
-    } catch { /* no body = run batch 1 with chain */ chain = true; }
+    } catch { chain = true; }
 
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
     if (!firecrawlKey) {
@@ -258,12 +386,32 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Load deleted concerts to skip them
+    const { data: deletedConcerts } = await supabase
+      .from("deleted_concerts")
+      .select("artist, venue, date");
+    const deletedKeys = new Set(
+      (deletedConcerts || []).map((d: any) => 
+        `${normalizeArtist(d.artist)}|${normalizeVenueKey(d.venue)}|${dateOnly(d.date)}`
+      )
+    );
+    console.log(`Loaded ${deletedKeys.size} deleted concert keys to skip`);
+
     let totalUpserted = 0;
 
     async function upsertBatch(concerts: ScrapedConcert[]) {
       const deduped = deduplicateConcerts(concerts);
       let count = 0;
+      let skippedDeleted = 0;
+
       for (const concert of deduped) {
+        // Check if this concert was previously deleted
+        const key = `${normalizeArtist(concert.artist)}|${normalizeVenueKey(concert.venue)}|${dateOnly(concert.date)}`;
+        if (deletedKeys.has(key)) {
+          skippedDeleted++;
+          continue;
+        }
+
         let imageUrl = concert.image_url;
         if (!imageUrl && concert.event_type !== "comedy") {
           imageUrl = await lookupArtistImage(concert.artist);
@@ -291,6 +439,9 @@ Deno.serve(async (req) => {
         }
       }
       totalUpserted += count;
+      if (skippedDeleted > 0) {
+        console.log(`Skipped ${skippedDeleted} previously deleted concerts`);
+      }
       console.log(`Upserted ${count} from batch of ${concerts.length}`);
     }
 
