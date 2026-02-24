@@ -4,7 +4,9 @@ This directory contains process documents that guide autonomous development sess
 
 ## How It Works
 
-1. **Before starting work**, read `backlog.md` for prioritized tasks
+⚠️ **Token budget rule**: Only check `backlog.md` and `questions.md` **once per week** (or when the human explicitly asks). Do NOT read them on every session — save tokens for actual work.
+
+1. **Once a week** (or when asked), review `backlog.md` for priorities and `questions.md` for answered questions
 2. **During work**, follow `process-cleanup.md` and other process docs for standards
 3. **When blocked**, add questions to `questions.md` instead of stopping
 4. **After completing work**, update `changelog.md` and move completed items in `backlog.md`
