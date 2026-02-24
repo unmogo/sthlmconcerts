@@ -211,25 +211,20 @@ function getLiveNationPages(batch: number): number[] {
   return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
-async function triggerNextBatch(batch: number, supabaseUrl: string, anonKey: string) {
+async function triggerNextBatch(batch: number, supabase: any) {
   const nextBatch = batch + 1;
   if (nextBatch > TOTAL_BATCHES) {
     console.log("All batches complete — no more to chain.");
     return;
   }
-  console.log(`Chaining → batch ${nextBatch}`);
+  console.log(`Chaining → batch ${nextBatch} via pg_net`);
   try {
-    // Fire-and-forget: don't await
-    fetch(`${supabaseUrl}/functions/v1/scrape-concerts`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${anonKey}`,
-      },
-      body: JSON.stringify({ batch: nextBatch, chain: true }),
-    }).catch((err) => console.error(`Chain call failed:`, err));
-    // Small delay to ensure the request is sent before we return
-    await delay(500);
+    const { error } = await supabase.rpc("trigger_scrape_batch", { batch_num: nextBatch });
+    if (error) {
+      console.error(`pg_net chain failed:`, error.message);
+    } else {
+      console.log(`Successfully queued batch ${nextBatch}`);
+    }
   } catch (err) {
     console.error(`Failed to trigger next batch:`, err);
   }
@@ -261,7 +256,6 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     let totalUpserted = 0;
@@ -436,7 +430,7 @@ Deno.serve(async (req) => {
 
     // Chain to next batch if requested
     if (chain) {
-      await triggerNextBatch(targetBatch, supabaseUrl, anonKey);
+      await triggerNextBatch(targetBatch, supabase);
     }
 
     return new Response(

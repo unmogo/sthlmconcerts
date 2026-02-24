@@ -155,6 +155,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      trigger_scrape_batch: { Args: { batch_num: number }; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"
