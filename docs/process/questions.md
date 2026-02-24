@@ -19,13 +19,13 @@ Are there other venue aliases we should add? E.g., "Annexet" vs "Hovet", "Avicii
 Current order: MusicBrainz → Wikipedia → iTunes.  
 Should we add Spotify artist images as another fallback? Requires API key.
 
-**Answer:** <!-- answer here -->
+**Answer:** <!-- answer here -->yeah, put spotify as first in prio,  spotify cliennID 5296dddd172f45cfa517b27cead76f8e client secret: c2e9a429ebf24f86a0d7b800b4ec9157
 
 ### Q3: Scrape frequency
 **Asked:** 2026-02-24  
 How often should the cron job run? Currently manual-only. Suggestion: daily at 03:00 CET.
 
-**Answer:** <!-- answer here -->
+**Answer:** <!-- answer here --> once a week
 
 ---
 
