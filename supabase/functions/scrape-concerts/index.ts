@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const START_TIME = Date.now();
-const TIME_BUDGET_MS = 300_000; // 5 minutes
+const TIME_BUDGET_MS = 900_000; // 15 minutes
 
 function hasTimeBudget(): boolean {
   return Date.now() - START_TIME < TIME_BUDGET_MS;

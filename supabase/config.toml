@@ -2,7 +2,7 @@ project_id = "bdbvyayxzlyxjzeiyfwh"
 
 [functions.scrape-concerts]
 verify_jwt = false
-wall_clock_timeout = 300
+wall_clock_timeout = 900
 
 [functions.manage-concerts]
 verify_jwt = false
