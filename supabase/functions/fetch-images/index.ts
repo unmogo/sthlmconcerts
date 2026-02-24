@@ -11,11 +11,21 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function lookupArtistImage(artist: string): Promise<string | null> {
   const cleanName = artist.split(/[:\-–—|(]/)[0].trim();
   try {
+    // Search for albums/tracks by the artist — musicArtist entity doesn't return artwork
     const res = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=musicArtist&limit=1`
+      `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=album&limit=1`
     );
     const data = await res.json();
-    return data?.results?.[0]?.artworkUrl100?.replace("100x100", "600x600") || null;
+    const artworkUrl = data?.results?.[0]?.artworkUrl100;
+    if (artworkUrl) {
+      return artworkUrl.replace("100x100", "600x600");
+    }
+    // Fallback: try musicTrack
+    const res2 = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=musicTrack&limit=1`
+    );
+    const data2 = await res2.json();
+    return data2?.results?.[0]?.artworkUrl100?.replace("100x100", "600x600") || null;
   } catch {
     return null;
   }
