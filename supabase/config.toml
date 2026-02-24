@@ -6,3 +6,6 @@ wall_clock_timeout = 900
 
 [functions.manage-concerts]
 verify_jwt = false
+
+[functions.fetch-images]
+verify_jwt = false

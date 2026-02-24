@@ -1,5 +1,5 @@
-import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, User } from "lucide-react";
-import { triggerScrape } from "@/lib/api/concerts";
+import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, ImageIcon } from "lucide-react";
+import { triggerScrape, triggerFetchImages } from "@/lib/api/concerts";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -19,6 +19,7 @@ interface HeaderProps {
 
 export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
   const [scraping, setScraping] = useState(false);
+  const [fetchingImages, setFetchingImages] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, isAdmin, signOut } = useAuth();
@@ -41,6 +42,26 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
       });
     } finally {
       setScraping(false);
+    }
+  };
+
+  const handleFetchImages = async () => {
+    setFetchingImages(true);
+    try {
+      const result = await triggerFetchImages();
+      toast({
+        title: "Images updated",
+        description: result.message || "Missing images have been fetched.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["concerts"] });
+    } catch {
+      toast({
+        title: "Image fetch failed",
+        description: "Could not fetch images. Try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setFetchingImages(false);
     }
   };
 
@@ -119,6 +140,15 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
               >
                 <Download className="h-4 w-4" />
                 Export
+              </button>
+
+              <button
+                onClick={handleFetchImages}
+                disabled={fetchingImages}
+                className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+              >
+                <ImageIcon className={`h-4 w-4 ${fetchingImages ? "animate-pulse" : ""}`} />
+                {fetchingImages ? "Fetching…" : "Images"}
               </button>
 
               <button

@@ -20,6 +20,12 @@ export async function triggerScrape(): Promise<{ success: boolean; message: stri
   return data;
 }
 
+export async function triggerFetchImages(): Promise<{ success: boolean; message: string }> {
+  const { data, error } = await supabase.functions.invoke("fetch-images");
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteConcerts(ids: string[]): Promise<void> {
   const { error } = await supabase.functions.invoke("manage-concerts", {
     body: { action: "delete", ids },
