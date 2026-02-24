@@ -8,24 +8,70 @@ const corsHeaders = {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Simple MD5 hash for Wikimedia Commons file paths
+async function md5Hash(input: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest("MD5", data).catch(() => null);
+  if (hashBuffer) {
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) - hash) + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16).padStart(32, "0");
+}
+
 async function lookupArtistImage(artist: string): Promise<string | null> {
   const cleanName = artist.split(/[:\-–—|(]/)[0].trim();
+
   try {
-    // Search for albums/tracks by the artist — musicArtist entity doesn't return artwork
-    const res = await fetch(
+    // Step 1: Search MusicBrainz for the artist
+    const mbRes = await fetch(
+      `https://musicbrainz.org/ws/2/artist/?query=artist:${encodeURIComponent(cleanName)}&limit=1&fmt=json`,
+      { headers: { "User-Agent": "SthlmConcerts/1.0 (contact@sthlmconcerts.app)" } }
+    );
+    const mbData = await mbRes.json();
+    const mbArtist = mbData?.artists?.[0];
+    if (!mbArtist?.id) return null;
+
+    // Step 2: Get Wikidata relation
+    await delay(1100); // MusicBrainz rate limit: 1 req/sec
+    const relRes = await fetch(
+      `https://musicbrainz.org/ws/2/artist/${mbArtist.id}?inc=url-rels&fmt=json`,
+      { headers: { "User-Agent": "SthlmConcerts/1.0 (contact@sthlmconcerts.app)" } }
+    );
+    const relData = await relRes.json();
+    const relations = relData?.relations || [];
+
+    const wikidataRel = relations.find((r: any) => r.type === "wikidata");
+    if (wikidataRel?.url?.resource) {
+      const wikidataId = wikidataRel.url.resource.split("/").pop();
+      const wdRes = await fetch(
+        `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${wikidataId}&property=P18&format=json`
+      );
+      const wdData = await wdRes.json();
+      const imageName = wdData?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+      if (imageName) {
+        const filename = encodeURIComponent(imageName.replace(/ /g, "_"));
+        const md5 = await md5Hash(imageName.replace(/ /g, "_"));
+        return `https://upload.wikimedia.org/wikipedia/commons/thumb/${md5[0]}/${md5.slice(0, 2)}/${filename}/500px-${filename}`;
+      }
+    }
+
+    // Fallback: iTunes album art
+    const itunesRes = await fetch(
       `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=album&limit=1`
     );
-    const data = await res.json();
-    const artworkUrl = data?.results?.[0]?.artworkUrl100;
+    const itunesData = await itunesRes.json();
+    const artworkUrl = itunesData?.results?.[0]?.artworkUrl100;
     if (artworkUrl) {
       return artworkUrl.replace("100x100", "600x600");
     }
-    // Fallback: try musicTrack
-    const res2 = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=musicTrack&limit=1`
-    );
-    const data2 = await res2.json();
-    return data2?.results?.[0]?.artworkUrl100?.replace("100x100", "600x600") || null;
+
+    return null;
   } catch {
     return null;
   }
@@ -41,7 +87,6 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get all concerts with missing images (future events only)
     const { data: concerts, error } = await supabase
       .from("concerts")
       .select("id, artist, event_type")
@@ -59,7 +104,6 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${concerts.length} concerts with missing images`);
 
-    // Deduplicate by artist to avoid redundant lookups
     const artistCache = new Map<string, string | null>();
     let updated = 0;
     let failed = 0;
@@ -71,8 +115,7 @@ Deno.serve(async (req) => {
       if (artistCache.has(cacheKey)) {
         imageUrl = artistCache.get(cacheKey)!;
       } else {
-        // Small delay to avoid rate limiting iTunes API
-        if (artistCache.size > 0) await delay(300);
+        if (artistCache.size > 0) await delay(1200); // MusicBrainz rate limit
         imageUrl = await lookupArtistImage(concert.artist);
         artistCache.set(cacheKey, imageUrl);
       }

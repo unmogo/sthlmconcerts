@@ -62,6 +62,33 @@ export type Database = {
         }
         Relationships: []
       }
+      deleted_concerts: {
+        Row: {
+          artist: string
+          date: string
+          deleted_at: string
+          deleted_by: string | null
+          id: string
+          venue: string
+        }
+        Insert: {
+          artist: string
+          date: string
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          venue: string
+        }
+        Update: {
+          artist?: string
+          date?: string
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          venue?: string
+        }
+        Relationships: []
+      }
       favorites: {
         Row: {
           concert_id: string

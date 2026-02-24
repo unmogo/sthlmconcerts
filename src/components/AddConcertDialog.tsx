@@ -20,6 +20,7 @@ export function AddConcertDialog({ onClose }: AddConcertDialogProps) {
   const [ticketUrl, setTicketUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [eventType, setEventType] = useState("concert");
+  const [ticketsAvailable, setTicketsAvailable] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scraped, setScraped] = useState(false);
@@ -64,6 +65,7 @@ export function AddConcertDialog({ onClose }: AddConcertDialogProps) {
         ticket_url: ticketUrl || null,
         image_url: imageUrl || null,
         event_type: eventType,
+        tickets_available: ticketsAvailable,
       });
       toast({ title: "Added", description: `${artist} added successfully` });
       queryClient.invalidateQueries({ queryKey: ["concerts"] });
@@ -121,6 +123,18 @@ export function AddConcertDialog({ onClose }: AddConcertDialogProps) {
             >
               <option value="concert">Concert</option>
               <option value="comedy">Comedy</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="add-status">Ticket Status</Label>
+            <select
+              id="add-status"
+              value={ticketsAvailable ? "on_sale" : "tba"}
+              onChange={(e) => setTicketsAvailable(e.target.value === "on_sale")}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="tba">TBA</option>
+              <option value="on_sale">On Sale</option>
             </select>
           </div>
           <div>

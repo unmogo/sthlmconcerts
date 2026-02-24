@@ -66,10 +66,27 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
-    // DELETE
+    // DELETE — also record in deleted_concerts so scraper won't re-add
     if (action === "delete" && Array.isArray(body.ids) && body.ids.length > 0) {
+      // First fetch the concerts to record their identity
+      const { data: toDelete } = await supabase
+        .from("concerts")
+        .select("artist, venue, date")
+        .in("id", body.ids);
+
       const { error } = await supabase.from("concerts").delete().in("id", body.ids);
       if (error) throw error;
+
+      // Record deletions so scraper skips these in future
+      if (toDelete && toDelete.length > 0) {
+        for (const c of toDelete) {
+          await supabase.from("deleted_concerts").upsert(
+            { artist: c.artist, venue: c.venue, date: c.date },
+            { onConflict: "artist,venue,date" }
+          ).catch(() => {}); // ignore duplicates
+        }
+      }
+
       return new Response(
         JSON.stringify({ success: true, message: `Deleted ${body.ids.length} events` }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -95,6 +112,7 @@ Deno.serve(async (req) => {
         ticket_url: body.concert.ticket_url || null,
         image_url: body.concert.image_url || null,
         event_type: body.concert.event_type || "concert",
+        tickets_available: body.concert.tickets_available ?? false,
         source: "manual",
         source_url: body.concert.ticket_url || null,
       });

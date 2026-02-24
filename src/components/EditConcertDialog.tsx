@@ -19,6 +19,7 @@ export function EditConcertDialog({ concert, onClose }: EditConcertDialogProps) 
   const [date, setDate] = useState(concert.date.slice(0, 16)); // datetime-local format
   const [ticketUrl, setTicketUrl] = useState(concert.ticket_url || "");
   const [imageUrl, setImageUrl] = useState(concert.image_url || "");
+  const [ticketsAvailable, setTicketsAvailable] = useState(concert.tickets_available ?? false);
   const [saving, setSaving] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -32,6 +33,7 @@ export function EditConcertDialog({ concert, onClose }: EditConcertDialogProps) 
         date: new Date(date).toISOString(),
         ticket_url: ticketUrl || null,
         image_url: imageUrl || null,
+        tickets_available: ticketsAvailable,
       });
       toast({ title: "Updated", description: `${artist} updated successfully` });
       queryClient.invalidateQueries({ queryKey: ["concerts"] });
@@ -61,6 +63,18 @@ export function EditConcertDialog({ concert, onClose }: EditConcertDialogProps) 
           <div>
             <Label htmlFor="date">Date & Time</Label>
             <Input id="date" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="edit-status">Ticket Status</Label>
+            <select
+              id="edit-status"
+              value={ticketsAvailable ? "on_sale" : "tba"}
+              onChange={(e) => setTicketsAvailable(e.target.value === "on_sale")}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="tba">TBA</option>
+              <option value="on_sale">On Sale</option>
+            </select>
           </div>
           <div>
             <Label htmlFor="ticket_url">Ticket URL</Label>
