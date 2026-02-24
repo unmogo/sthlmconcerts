@@ -80,10 +80,11 @@ Deno.serve(async (req) => {
       // Record deletions so scraper skips these in future
       if (toDelete && toDelete.length > 0) {
         for (const c of toDelete) {
-          await supabase.from("deleted_concerts").upsert(
+          const { error: delErr } = await supabase.from("deleted_concerts").upsert(
             { artist: c.artist, venue: c.venue, date: c.date },
             { onConflict: "artist,venue,date" }
-          ).catch(() => {}); // ignore duplicates
+          );
+          if (delErr) console.error("Failed to record deletion:", delErr.message);
         }
       }
 
