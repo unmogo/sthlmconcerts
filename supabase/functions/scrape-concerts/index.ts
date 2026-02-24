@@ -38,12 +38,17 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
 
   try {
     const res = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=musicArtist&limit=1`
+      `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=album&limit=1`
     );
     const data = await res.json();
-    const url = data?.results?.[0]?.artworkUrl100?.replace("100x100", "600x600") || null;
-    artistImageCache.set(cacheKey, url);
-    return url;
+    const artworkUrl = data?.results?.[0]?.artworkUrl100;
+    if (artworkUrl) {
+      const url = artworkUrl.replace("100x100", "600x600");
+      artistImageCache.set(cacheKey, url);
+      return url;
+    }
+    artistImageCache.set(cacheKey, null);
+    return null;
   } catch {
     artistImageCache.set(cacheKey, null);
     return null;
