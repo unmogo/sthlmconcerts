@@ -13,7 +13,9 @@ export async function fetchConcerts(): Promise<Concert[]> {
 }
 
 export async function triggerScrape(): Promise<{ success: boolean; message: string }> {
-  const { data, error } = await supabase.functions.invoke("scrape-concerts");
+  const { data, error } = await supabase.functions.invoke("scrape-concerts", {
+    body: { batch: 1, chain: true },
+  });
   if (error) throw error;
   return data;
 }
