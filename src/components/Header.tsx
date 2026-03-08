@@ -1,6 +1,7 @@
-import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, ImageIcon } from "lucide-react";
+import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, ImageIcon, Activity } from "lucide-react";
 import { triggerScrape, triggerFetchImages } from "@/lib/api/concerts";
 import { useState } from "react";
+import { ScrapeLogDashboard } from "./ScrapeLogDashboard";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
