@@ -385,9 +385,10 @@ Deno.serve(async (req) => {
         const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
         if (deletedKeys.has(key)) continue;
 
+        // Use raw SQL upsert to match the unique index on lower(trim(artist)), lower(trim(venue)), date_only(date)
         const { error } = await supabase.from("concerts").upsert({
-          artist: e.artist,
-          venue: e.venue,
+          artist: e.artist.trim(),
+          venue: e.venue.trim(),
           date: e.date,
           ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
           ticket_sale_date: e.ticket_sale_date || null,
@@ -396,7 +397,7 @@ Deno.serve(async (req) => {
           event_type: e.event_type,
           source: e.source,
           source_url: e.source_url,
-        }, { onConflict: "artist,venue,date" });
+        }, { onConflict: "artist,venue,date", ignoreDuplicates: true });
 
         if (error) console.error(`Upsert error for "${e.artist}":`, error.message);
         else count++;
