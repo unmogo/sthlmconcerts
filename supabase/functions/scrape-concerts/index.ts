@@ -418,37 +418,26 @@ Deno.serve(async (req) => {
     let totalUpserted = 0;
     let totalScraped = 0;
 
+    // Pre-build a map of existing concerts by normalized key for fast dedup
+    const existingById = new Map<string, { id: string; artist: string; venue: string }>();
+    for (const c of (existingConcerts || [])) {
+      const key = `${normalizeArtist(c.artist)}|${normalizeVenueKey(c.venue)}|${dateOnly(c.date)}`;
+      existingById.set(key, c as any);
+    }
+
     async function upsertEvents(events: ScrapedEvent[]) {
       let count = 0;
       for (const e of events) {
         e.venue = normalizeVenueName(e.venue);
         if (isInvalidVenue(e.venue)) continue;
-        if (!isStockholmVenue(e.venue)) {
-          console.log(`Rejected non-Stockholm venue: "${e.venue}" for "${e.artist}"`);
-          continue;
-        }
+        if (!isStockholmVenue(e.venue)) continue;
 
         const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
         if (deletedKeys.has(key)) continue;
 
-        const dayStart = `${dateOnly(e.date)}T00:00:00Z`;
-        const dayEnd = `${dateOnly(e.date)}T23:59:59Z`;
-
-        const { data: sameDayCandidates } = await supabase
-          .from("concerts")
-          .select("id, artist, venue")
-          .gte("date", dayStart)
-          .lt("date", dayEnd)
-          .limit(100);
-
-        const normalizedArtist = normalizeArtist(e.artist);
-        const normalizedVenue = normalizeVenueKey(e.venue);
-        const match = (sameDayCandidates || []).find((c: any) =>
-          normalizeArtist(c.artist) === normalizedArtist && normalizeVenueKey(c.venue) === normalizedVenue
-        );
-
-        if (match?.id) {
-          // Update existing with new data
+        const existing = existingById.get(key);
+        if (existing) {
+          // Update existing
           const updateData: any = {};
           if (isValidTicketUrl(e.ticket_url)) updateData.ticket_url = e.ticket_url;
           if (isValidImageUrl(e.image_url)) updateData.image_url = e.image_url;
@@ -456,7 +445,7 @@ Deno.serve(async (req) => {
           if (e.source_url) updateData.source_url = e.source_url;
           updateData.tickets_available = e.tickets_available ?? false;
 
-          const { error } = await supabase.from("concerts").update(updateData).eq("id", match.id);
+          const { error } = await supabase.from("concerts").update(updateData).eq("id", (existing as any).id);
           if (!error) count++;
           continue;
         }
