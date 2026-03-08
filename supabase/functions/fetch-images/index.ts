@@ -51,6 +51,7 @@ function isBadImageUrl(url: string | null | undefined): boolean {
     lower.includes("example.com") ||
     lower.includes("widget-launcher.imbox.io") ||
     lower.includes("konserthuset.se/globalassets") ||
+    lower.includes("evently.se/api/file") ||
     lower.includes("localhost") ||
     lower.includes("lovable.app") ||
     lower.includes("id-preview--")
