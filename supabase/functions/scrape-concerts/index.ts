@@ -332,14 +332,28 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
 
 // ==================== FIRECRAWL ====================
 
-async function firecrawlScrapeMarkdown(apiKey: string, url: string, waitFor = 5000): Promise<string | null> {
+async function firecrawlScrapeMarkdown(apiKey: string, url: string, waitFor = 5000, scrollCount = 0): Promise<string | null> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  
+  // Build scroll actions for infinite-scroll pages
+  const actions: any[] = [];
+  for (let i = 0; i < scrollCount; i++) {
+    actions.push({ type: "scroll", direction: "down" });
+    actions.push({ type: "wait", milliseconds: 2000 });
+  }
+  
   try {
     const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true, waitFor }),
+      body: JSON.stringify({
+        url,
+        formats: ["markdown"],
+        onlyMainContent: false,
+        waitFor,
+        ...(actions.length > 0 ? { actions } : {}),
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
