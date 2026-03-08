@@ -198,5 +198,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
         </div>
       </div>
     </header>
+    {showLogs && <ScrapeLogDashboard onClose={() => setShowLogs(false)} />}
+    </>
   );
 }
