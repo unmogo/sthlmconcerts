@@ -8,27 +8,78 @@ const corsHeaders = {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Simple MD5 hash for Wikimedia Commons file paths
-async function md5Hash(input: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  const hashBuffer = await crypto.subtle.digest("MD5", data).catch(() => null);
-  if (hashBuffer) {
-    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+// ==================== SPOTIFY AUTH ====================
+
+let spotifyToken: string | null = null;
+let spotifyTokenExpiry = 0;
+
+async function getSpotifyToken(): Promise<string | null> {
+  if (spotifyToken && Date.now() < spotifyTokenExpiry) return spotifyToken;
+
+  const clientId = Deno.env.get("SPOTIFY_CLIENT_ID");
+  const clientSecret = Deno.env.get("SPOTIFY_CLIENT_SECRET");
+  if (!clientId || !clientSecret) return null;
+
+  try {
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      spotifyToken = data.access_token;
+      spotifyTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+      return spotifyToken;
+    }
+    console.error("Spotify token error:", data);
+    return null;
+  } catch (err) {
+    console.error("Spotify auth failed:", err);
+    return null;
   }
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) - hash) + input.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(32, "0");
 }
 
-async function lookupArtistImage(artist: string): Promise<string | null> {
+// ==================== SPOTIFY IMAGE LOOKUP ====================
+
+async function lookupSpotifyImage(artist: string): Promise<string | null> {
+  const token = await getSpotifyToken();
+  if (!token) return null;
+
+  const cleanName = artist.split(/[:\-–—|(]/)[0].trim();
+  try {
+    const res = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(cleanName)}&type=artist&limit=1`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) {
+      console.error(`Spotify search failed for "${cleanName}": ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    const images = data?.artists?.items?.[0]?.images;
+    if (images && images.length > 0) {
+      // Prefer 640px image, fallback to largest
+      const best = images.find((img: any) => img.width === 640) || images[0];
+      return best.url;
+    }
+    return null;
+  } catch (err) {
+    console.error(`Spotify lookup error for "${cleanName}":`, err);
+    return null;
+  }
+}
+
+// ==================== FALLBACK: MUSICBRAINZ → WIKIPEDIA → ITUNES ====================
+
+async function lookupFallbackImage(artist: string): Promise<string | null> {
   const cleanName = artist.split(/[:\-–—|(]/)[0].trim();
 
   try {
-    // Step 1: Search MusicBrainz for the artist
+    // MusicBrainz → Wikidata → Wikipedia Commons
     const mbRes = await fetch(
       `https://musicbrainz.org/ws/2/artist/?query=artist:${encodeURIComponent(cleanName)}&limit=1&fmt=json`,
       { headers: { "User-Agent": "SthlmConcerts/1.0 (contact@sthlmconcerts.app)" } }
@@ -37,16 +88,14 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
     const mbArtist = mbData?.artists?.[0];
     if (!mbArtist?.id) return null;
 
-    // Step 2: Get Wikidata relation
-    await delay(1100); // MusicBrainz rate limit: 1 req/sec
+    await delay(1100);
     const relRes = await fetch(
       `https://musicbrainz.org/ws/2/artist/${mbArtist.id}?inc=url-rels&fmt=json`,
       { headers: { "User-Agent": "SthlmConcerts/1.0 (contact@sthlmconcerts.app)" } }
     );
     const relData = await relRes.json();
-    const relations = relData?.relations || [];
-
-    const wikidataRel = relations.find((r: any) => r.type === "wikidata");
+    const wikidataRel = (relData?.relations || []).find((r: any) => r.type === "wikidata");
+    
     if (wikidataRel?.url?.resource) {
       const wikidataId = wikidataRel.url.resource.split("/").pop();
       const wdRes = await fetch(
@@ -56,26 +105,30 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
       const imageName = wdData?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
       if (imageName) {
         const filename = encodeURIComponent(imageName.replace(/ /g, "_"));
-        const md5 = await md5Hash(imageName.replace(/ /g, "_"));
-        return `https://upload.wikimedia.org/wikipedia/commons/thumb/${md5[0]}/${md5.slice(0, 2)}/${filename}/500px-${filename}`;
+        const hashInput = imageName.replace(/ /g, "_");
+        // Use SHA-256 to compute a simple hash for Wikimedia path
+        const encoder = new TextEncoder();
+        const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(hashInput));
+        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+        return `https://upload.wikimedia.org/wikipedia/commons/thumb/${hashHex[0]}/${hashHex.slice(0, 2)}/${filename}/500px-${filename}`;
       }
     }
 
-    // Fallback: iTunes album art
+    // iTunes fallback
     const itunesRes = await fetch(
       `https://itunes.apple.com/search?term=${encodeURIComponent(cleanName)}&entity=album&limit=1`
     );
     const itunesData = await itunesRes.json();
     const artworkUrl = itunesData?.results?.[0]?.artworkUrl100;
-    if (artworkUrl) {
-      return artworkUrl.replace("100x100", "600x600");
-    }
+    if (artworkUrl) return artworkUrl.replace("100x100", "600x600");
 
     return null;
   } catch {
     return null;
   }
 }
+
+// ==================== MAIN ====================
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -106,6 +159,8 @@ Deno.serve(async (req) => {
 
     const artistCache = new Map<string, string | null>();
     let updated = 0;
+    let spotifyHits = 0;
+    let fallbackHits = 0;
     let failed = 0;
 
     for (const concert of concerts) {
@@ -115,8 +170,16 @@ Deno.serve(async (req) => {
       if (artistCache.has(cacheKey)) {
         imageUrl = artistCache.get(cacheKey)!;
       } else {
-        if (artistCache.size > 0) await delay(1200); // MusicBrainz rate limit
-        imageUrl = await lookupArtistImage(concert.artist);
+        // Try Spotify first
+        imageUrl = await lookupSpotifyImage(concert.artist);
+        if (imageUrl) {
+          spotifyHits++;
+        } else {
+          // Fallback to MusicBrainz chain
+          if (artistCache.size > 0) await delay(1200);
+          imageUrl = await lookupFallbackImage(concert.artist);
+          if (imageUrl) fallbackHits++;
+        }
         artistCache.set(cacheKey, imageUrl);
       }
 
@@ -137,11 +200,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    const message = `Updated ${updated} images, ${failed} not found, out of ${concerts.length} missing`;
+    const message = `Updated ${updated} images (Spotify: ${spotifyHits}, fallback: ${fallbackHits}), ${failed} not found, out of ${concerts.length} missing`;
     console.log(message);
 
     return new Response(
-      JSON.stringify({ success: true, message, updated, failed, total: concerts.length }),
+      JSON.stringify({ success: true, message, updated, spotifyHits, fallbackHits, failed, total: concerts.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
