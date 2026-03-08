@@ -186,6 +186,7 @@ function isValidImageUrl(url: string | undefined | null): boolean {
   if (lower.includes("localhost") || lower.includes("127.0.0.1")) return false;
   if (lower.includes("widget-launcher.imbox.io")) return false;
   if (lower.includes("konserthuset.se/globalassets")) return false;
+  if (lower.includes("evently.se/api/file")) return false;
   try {
     const parsed = new URL(url);
     return parsed.protocol === "https:" || parsed.protocol === "http:";
