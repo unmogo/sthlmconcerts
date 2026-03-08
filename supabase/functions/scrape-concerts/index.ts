@@ -497,8 +497,8 @@ Deno.serve(async (req) => {
       const discoverySeeds = [
         "https://evently.se/en/place/se/stockholm",
         "https://evently.se/en/place/se/stockholm?categories=music&page=1",
+        "https://evently.se/en/place/se/stockholm?categories=music&page=30",
         "https://evently.se/en/place/se/stockholm?categories=music&page=60",
-        "https://evently.se",
       ];
 
       const discoveredUrlSet = new Set<string>();
