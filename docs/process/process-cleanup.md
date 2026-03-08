@@ -11,15 +11,32 @@ Reject any event with ticket URLs matching:
 
 ### Geographic Filter
 Only keep events containing Stockholm-relevant keywords:
-- Venue or city contains: `stockholm`, `sthlm`, `solna`, `globen`, `avicii arena`, `hovet`, `annexet`, `cirkus`, `konserthuset`, `debaser`, `münchenbryggeriet`, `gröna lund`, `skansen`, `södra teatern`, `berns`, `nalen`, `fållan`, `vasateatern`, `dramaten`
+- Venue or city contains: `stockholm`, `sthlm`, `solna`, `globen`, `avicii arena`, `hovet`, `annexet`, `cirkus`, `konserthuset`, `debaser`, `münchenbryggeriet`, `gröna lund`, `skansen`, `södra teatern`, `berns`, `nalen`, `fållan`, `vasateatern`, `dramaten`, `waterfront`, `fasching`, `stampen`, `slaktkyrkan`, `trädgården`, `under bron`, `fryshuset`, `chinateatern`, `göta lejon`
+
+### Venue Rules
+- **"Stockholm, Sweden" is NOT a valid venue** — events with this venue must be enriched or rejected
+- Address-to-venue mapping resolves street addresses from evently detail pages to known venues
+- Venue normalization: `Friends Arena` → `Strawberry Arena`, `Globen` → `Avicii Arena`, etc.
 
 ### Venue Normalization
 | Raw Name | Normalized |
 |----------|-----------|
 | Stora Scen (Gröna Lund) | Gröna Lund |
 | Friends Arena | Strawberry Arena |
+| Tele2 Arena | Strawberry Arena |
 | Globen | Avicii Arena |
 | Ericsson Globe | Avicii Arena |
+
+### Address-to-Venue Mapping
+| Address Fragment | Venue |
+|-----------------|-------|
+| Kyrkslingan | Tyska Kyrkan |
+| Barnhusgatan 12-14 | Nalen |
+| Djurgårdsvägen 43 | Cirkus |
+| Hötorget 8 | Konserthuset |
+| Medborgarplatsen 3 | Södra Teatern |
+| Berzelii Park | Berns |
+| Globentorget | Avicii Arena |
 <!-- Add more as discovered -->
 
 ### Deduplication
