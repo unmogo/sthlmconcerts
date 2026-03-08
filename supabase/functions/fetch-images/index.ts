@@ -43,6 +43,20 @@ async function getSpotifyToken(): Promise<string | null> {
   }
 }
 
+function isBadImageUrl(url: string | null | undefined): boolean {
+  if (!url) return true;
+  const lower = url.toLowerCase();
+
+  return (
+    lower.includes("example.com") ||
+    lower.includes("widget-launcher.imbox.io") ||
+    lower.includes("konserthuset.se/globalassets") ||
+    lower.includes("localhost") ||
+    lower.includes("lovable.app") ||
+    lower.includes("id-preview--")
+  );
+}
+
 // ==================== SPOTIFY IMAGE LOOKUP ====================
 
 async function lookupSpotifyImage(artist: string): Promise<string | null> {
