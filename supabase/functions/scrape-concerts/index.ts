@@ -156,6 +156,40 @@ function isValidTicketUrl(url: string | undefined | null): boolean {
   try { new URL(url); return true; } catch { return false; }
 }
 
+function isValidImageUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+
+  if (lower.includes("example.com") || lower.includes("test.com")) return false;
+  if (lower.includes("id-preview--") || lower.includes("lovable.app") || lower.includes("lovableproject.com")) return false;
+  if (lower.includes("localhost") || lower.includes("127.0.0.1")) return false;
+  if (lower.includes("widget-launcher.imbox.io")) return false;
+  if (lower.includes("konserthuset.se/globalassets")) return false;
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function extractEventlyDetailUrls(markdown: string): string[] {
+  const urls = new Set<string>();
+
+  const absoluteMatches = markdown.match(/https?:\/\/evently\.se\/en\/events\/[^\s)\]\"]+\/\d{6}-\d{4}/g) || [];
+  for (const match of absoluteMatches) {
+    urls.add(match.split("?")[0]);
+  }
+
+  const relativeMatches = markdown.match(/\/en\/events\/[^\s)\]\"]+\/\d{6}-\d{4}/g) || [];
+  for (const match of relativeMatches) {
+    urls.add(`https://evently.se${match.split("?")[0]}`);
+  }
+
+  return Array.from(urls);
+}
+
 function isInvalidVenue(venue: string): boolean {
   const lower = venue.toLowerCase().trim();
   return ["stockholm", "stockholm, sweden", "sweden", "sverige", "", "n/a", 
