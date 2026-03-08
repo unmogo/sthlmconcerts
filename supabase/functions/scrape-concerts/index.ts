@@ -936,6 +936,9 @@ Deno.serve(async (req) => {
         .or("venue.ilike.%example.com%,ticket_url.ilike.%example.com%");
     }
 
+    // Chain FIRST so next batch starts even if upsert is slow
+    if (chain) await triggerNextBatch(targetBatch, supabase);
+
     // Log this batch
     const elapsed = Math.round((Date.now() - START_TIME) / 1000);
     await supabase.from("scrape_log").insert({
@@ -948,8 +951,6 @@ Deno.serve(async (req) => {
 
     const message = `Batch ${targetBatch}: scraped=${totalScraped}, upserted=${totalUpserted} (${elapsed}s)`;
     console.log(message);
-
-    if (chain) await triggerNextBatch(targetBatch, supabase);
 
     return new Response(JSON.stringify({ success: true, message, batch: targetBatch }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });
