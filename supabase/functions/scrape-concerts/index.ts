@@ -481,34 +481,185 @@ Deno.serve(async (req) => {
 
     console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chain}) ===`);
 
-    // ==================== BATCH 1-3: EVENTLY LISTING PAGES (MARKDOWN PARSE) ====================
+    // ==================== BATCH 1-3: EVENTLY (SINGLE PAGE=60, RESUME FROM OFFSET) ====================
     if (targetBatch >= 1 && targetBatch <= 3) {
-      let pages: { url: string; category: string }[] = [];
+      // Strategy:
+      // Batch 1: Scrape music page=60 (all events), parse, store in scrape_log, upsert until time runs out
+      // Batch 2: Resume music upserts from offset, then scrape comedy page=60
+      // Batch 3: Resume any remaining comedy upserts
 
-      if (targetBatch === 1) {
-        for (let p = 1; p <= 20; p++)
-          pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=music&page=${p}`, category: "music" });
-      } else if (targetBatch === 2) {
-        for (let p = 21; p <= 45; p++)
-          pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=music&page=${p}`, category: "music" });
-      } else {
-        for (let p = 46; p <= 65; p++)
-          pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=music&page=${p}`, category: "music" });
-        for (let p = 1; p <= 20; p++)
-          pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=standup&page=${p}`, category: "standup" });
+      const RESUME_SOURCE_MUSIC = "evently-parsed-music";
+      const RESUME_SOURCE_COMEDY = "evently-parsed-comedy";
+      const RESUME_SOURCE_OFFSET = "evently-resume-offset";
+
+      // Helper: load stored parsed events from scrape_log
+      async function loadStoredEvents(source: string): Promise<ScrapedEvent[]> {
+        const { data } = await supabase
+          .from("scrape_log")
+          .select("error")
+          .eq("source", source)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (!data?.[0]?.error) return [];
+        try { return JSON.parse(data[0].error); } catch { return []; }
       }
 
-      const allEvents: ScrapedEvent[] = [];
-      const needsVenueResolution: string[] = [];
-      let emptyPagesInRow = 0;
+      // Helper: load resume offset
+      async function loadResumeOffset(category: string): Promise<number> {
+        const { data } = await supabase
+          .from("scrape_log")
+          .select("events_upserted")
+          .eq("source", `${RESUME_SOURCE_OFFSET}-${category}`)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        return data?.[0]?.events_upserted || 0;
+      }
 
-      // Parse Evently markdown listing format:
-      // [![Title](image_url)\\\n...\n**Title**\\\n...\nDate](event_url)
+      // Helper: save resume offset
+      async function saveResumeOffset(category: string, offset: number) {
+        await supabase.from("scrape_log").insert({
+          batch: targetBatch,
+          source: `${RESUME_SOURCE_OFFSET}-${category}`,
+          events_found: 0,
+          events_upserted: offset,
+        });
+      }
+
+      // Helper: scrape + parse one category from page=60
+      async function scrapeAndParseCategory(category: "music" | "standup", storageSource: string): Promise<ScrapedEvent[]> {
+        const url = `https://evently.se/en/place/se/stockholm?categories=${category}&page=60`;
+        console.log(`Scraping ALL ${category} events from ${url}...`);
+        const md = await firecrawlScrapeMarkdown(firecrawlKey, url, 15000);
+        if (!md || md.length < 100) {
+          console.log(`No content for ${category}`);
+          return [];
+        }
+        console.log(`Got ${md.length} chars of markdown for ${category}`);
+
+        const { events, unresolved } = parseEventlyMarkdown(md, category);
+        console.log(`Parsed ${events.length} events with venues, ${unresolved.length} unresolved`);
+
+        // Store parsed events in scrape_log for resume
+        if (events.length > 0) {
+          // Split into chunks of ~300 to avoid row size limits
+          const chunkSize = 300;
+          for (let i = 0; i < events.length; i += chunkSize) {
+            const chunk = events.slice(i, i + chunkSize);
+            await supabase.from("scrape_log").insert({
+              batch: targetBatch,
+              source: storageSource + (i > 0 ? `-p${Math.floor(i / chunkSize)}` : ""),
+              events_found: chunk.length,
+              events_upserted: 0,
+              error: JSON.stringify(chunk),
+            });
+          }
+        }
+
+        // Store unresolved for batches 4-5
+        if (unresolved.length > 0) {
+          await supabase.from("scrape_log").insert({
+            batch: targetBatch,
+            source: "evently-needs-venue",
+            events_found: unresolved.length,
+            events_upserted: 0,
+            error: JSON.stringify(unresolved.slice(0, 500)),
+          });
+        }
+
+        return events;
+      }
+
+      // Helper: upsert events from offset, returns new offset
+      async function upsertFromOffset(events: ScrapedEvent[], offset: number, category: string): Promise<number> {
+        let i = offset;
+        let batchInserts: any[] = [];
+
+        for (; i < events.length; i++) {
+          if (!hasTimeBudget()) {
+            console.log(`Time budget exhausted at offset ${i}/${events.length}`);
+            break;
+          }
+
+          const e = events[i];
+          e.venue = normalizeVenueName(e.venue);
+          if (isInvalidVenue(e.venue) || !isStockholmVenue(e.venue)) continue;
+
+          const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
+          if (deletedKeys.has(key)) continue;
+
+          const existing = existingById.get(key);
+          if (existing) {
+            const updateData: any = {};
+            if (isValidTicketUrl(e.ticket_url)) updateData.ticket_url = e.ticket_url;
+            if (isValidImageUrl(e.image_url)) updateData.image_url = e.image_url;
+            if (e.source) updateData.source = e.source;
+            if (e.source_url) updateData.source_url = e.source_url;
+            updateData.tickets_available = e.tickets_available ?? false;
+            await supabase.from("concerts").update(updateData).eq("id", existing.id);
+            totalUpserted++;
+            continue;
+          }
+
+          if (existingKeys.has(key)) continue;
+
+          batchInserts.push({
+            artist: e.artist.trim(),
+            venue: e.venue.trim(),
+            date: e.date,
+            ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
+            ticket_sale_date: e.ticket_sale_date || null,
+            tickets_available: e.tickets_available ?? false,
+            image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
+            event_type: e.event_type,
+            source: e.source,
+            source_url: e.source_url,
+          });
+          existingKeys.add(key);
+
+          // Flush batch inserts every 50 rows
+          if (batchInserts.length >= 50) {
+            const { error } = await supabase.from("concerts").insert(batchInserts);
+            if (error) {
+              // Fallback: insert one by one on conflict
+              for (const row of batchInserts) {
+                const { error: e2 } = await supabase.from("concerts").insert(row);
+                if (e2 && !e2.message?.includes("duplicate key")) {
+                  console.error(`Insert error for "${row.artist}":`, e2.message);
+                } else if (!e2) totalUpserted++;
+              }
+            } else {
+              totalUpserted += batchInserts.length;
+            }
+            batchInserts = [];
+          }
+        }
+
+        // Flush remaining
+        if (batchInserts.length > 0) {
+          const { error } = await supabase.from("concerts").insert(batchInserts);
+          if (error) {
+            for (const row of batchInserts) {
+              const { error: e2 } = await supabase.from("concerts").insert(row);
+              if (e2 && !e2.message?.includes("duplicate key")) {
+                console.error(`Insert error for "${row.artist}":`, e2.message);
+              } else if (!e2) totalUpserted++;
+            }
+          } else {
+            totalUpserted += batchInserts.length;
+          }
+        }
+
+        // Save resume offset
+        await saveResumeOffset(category, i);
+        console.log(`Upserted up to offset ${i}/${events.length} for ${category}`);
+        return i;
+      }
+
+      // Parse Evently markdown listing format
       function parseEventlyMarkdown(md: string, category: string): { events: ScrapedEvent[]; unresolved: string[] } {
         const events: ScrapedEvent[] = [];
         const unresolved: string[] = [];
 
-        // Match pattern: [![...](image)]...](url) blocks
         const blockRegex = /\[!\[([^\]]*)\]\(([^)]*)\)[^\]]*\]\(([^)]+)\)/g;
         let match;
         while ((match = blockRegex.exec(md)) !== null) {
@@ -518,8 +669,6 @@ Deno.serve(async (req) => {
 
           if (!title || !eventUrl.includes("evently.se/en/events/")) continue;
 
-          // Extract date from the text between image and link close
-          // Look for the full block text to find date
           const blockStart = match.index;
           const blockEnd = blockStart + match[0].length;
           const fullBlock = md.substring(Math.max(0, blockStart - 10), Math.min(md.length, blockEnd + 200));
@@ -539,15 +688,12 @@ Deno.serve(async (req) => {
 
           if (!parsedDate || isNaN(parsedDate.getTime()) || parsedDate < new Date()) continue;
 
-          // Extract artist + venue from title
           const { artist, venue: titleVenue } = extractVenueFromTitle(title);
           if (!artist || artist.length < 2) continue;
 
-          // Detect category from block text
           let eventType = category === "standup" ? "comedy" : "concert";
           if (/comedy|standup|stand-up/i.test(fullBlock)) eventType = "comedy";
 
-          // Resolve venue
           let venue = titleVenue;
 
           if (!venue) {
@@ -556,7 +702,6 @@ Deno.serve(async (req) => {
           }
 
           if (!venue) {
-            // Try extracting venue from URL slug
             const slugMatch = eventUrl.match(/\/en\/events\/[^/]+\/([^/]+)/);
             if (slugMatch) {
               const slugText = slugMatch[1].replace(/-/g, " ").toLowerCase();
@@ -591,48 +736,72 @@ Deno.serve(async (req) => {
         return { events, unresolved };
       }
 
-      for (const page of pages) {
-        if (!hasTimeBudget()) break;
-        if (emptyPagesInRow >= 3) {
-          console.log("3 empty pages in a row, stopping pagination");
-          break;
+      // ====== BATCH EXECUTION ======
+      if (targetBatch === 1) {
+        // Scrape ALL music events in one call
+        const musicEvents = await scrapeAndParseCategory("music", RESUME_SOURCE_MUSIC);
+        totalScraped = musicEvents.length;
+        if (musicEvents.length > 0) {
+          await upsertFromOffset(musicEvents, 0, "music");
+        }
+      } else if (targetBatch === 2) {
+        // Resume music if incomplete, then scrape comedy
+        let storedMusic = await loadStoredEvents(RESUME_SOURCE_MUSIC);
+        // Also load overflow chunks
+        for (let p = 1; p <= 10; p++) {
+          const chunk = await loadStoredEvents(`${RESUME_SOURCE_MUSIC}-p${p}`);
+          if (chunk.length === 0) break;
+          storedMusic = storedMusic.concat(chunk);
+        }
+        const musicOffset = await loadResumeOffset("music");
+        console.log(`Resuming music from offset ${musicOffset}/${storedMusic.length}`);
+
+        if (musicOffset < storedMusic.length && storedMusic.length > 0) {
+          totalScraped = storedMusic.length;
+          await upsertFromOffset(storedMusic, musicOffset, "music");
         }
 
-        console.log(`Scraping ${page.url}...`);
-        const md = await firecrawlScrapeMarkdown(firecrawlKey, page.url, 8000);
+        // If time remains, scrape comedy
+        if (hasTimeBudget()) {
+          const comedyEvents = await scrapeAndParseCategory("standup", RESUME_SOURCE_COMEDY);
+          totalScraped += comedyEvents.length;
+          if (comedyEvents.length > 0) {
+            await upsertFromOffset(comedyEvents, 0, "comedy");
+          }
+        }
+      } else if (targetBatch === 3) {
+        // Resume comedy if incomplete
+        let storedComedy = await loadStoredEvents(RESUME_SOURCE_COMEDY);
+        for (let p = 1; p <= 10; p++) {
+          const chunk = await loadStoredEvents(`${RESUME_SOURCE_COMEDY}-p${p}`);
+          if (chunk.length === 0) break;
+          storedComedy = storedComedy.concat(chunk);
+        }
+        const comedyOffset = await loadResumeOffset("comedy");
+        console.log(`Resuming comedy from offset ${comedyOffset}/${storedComedy.length}`);
 
-        if (!md || md.length < 100) {
-          emptyPagesInRow++;
-          console.log("No content on page");
-          await delay(1000);
-          continue;
+        if (comedyOffset < storedComedy.length && storedComedy.length > 0) {
+          totalScraped = storedComedy.length;
+          await upsertFromOffset(storedComedy, comedyOffset, "comedy");
         }
 
-        const { events, unresolved } = parseEventlyMarkdown(md, page.category);
-        emptyPagesInRow = events.length === 0 && unresolved.length === 0 ? emptyPagesInRow + 1 : 0;
-
-        allEvents.push(...events);
-        needsVenueResolution.push(...unresolved);
-        totalScraped += events.length + unresolved.length;
-
-        console.log(`Page: ${events.length} with venue, ${unresolved.length} unresolved`);
-        await delay(1500);
+        // Also resume any remaining music
+        if (hasTimeBudget()) {
+          let storedMusic = await loadStoredEvents(RESUME_SOURCE_MUSIC);
+          for (let p = 1; p <= 10; p++) {
+            const chunk = await loadStoredEvents(`${RESUME_SOURCE_MUSIC}-p${p}`);
+            if (chunk.length === 0) break;
+            storedMusic = storedMusic.concat(chunk);
+          }
+          const musicOffset = await loadResumeOffset("music");
+          if (musicOffset < storedMusic.length && storedMusic.length > 0) {
+            console.log(`Also resuming leftover music from ${musicOffset}/${storedMusic.length}`);
+            await upsertFromOffset(storedMusic, musicOffset, "music");
+          }
+        }
       }
 
-      if (allEvents.length > 0) await upsertEvents(allEvents);
-
-      // Store unresolved for batch 4-5
-      if (needsVenueResolution.length > 0) {
-        await supabase.from("scrape_log").insert({
-          batch: targetBatch,
-          source: "evently-needs-venue",
-          events_found: needsVenueResolution.length,
-          events_upserted: 0,
-          error: JSON.stringify(needsVenueResolution.slice(0, 300)),
-        });
-      }
-
-      console.log(`Evently batch ${targetBatch}: ${totalScraped} found, ${allEvents.length} with venues, ${needsVenueResolution.length} need venue resolution`);
+      console.log(`Evently batch ${targetBatch}: scraped=${totalScraped}, upserted=${totalUpserted}`);
     }
 
     // ==================== BATCH 4-5: EVENTLY VENUE RESOLUTION ====================
