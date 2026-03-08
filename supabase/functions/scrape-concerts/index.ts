@@ -807,77 +807,114 @@ Deno.serve(async (req) => {
     // ==================== BATCH 4-5: EVENTLY VENUE RESOLUTION ====================
     // Scrape detail pages for events that need venue resolution
     if (targetBatch >= 4 && targetBatch <= 5) {
+      // Load ALL unresolved events (both music and comedy entries)
       const { data: logEntries } = await supabase
         .from("scrape_log")
         .select("error")
         .eq("source", "evently-needs-venue")
         .order("created_at", { ascending: false })
-        .limit(1);
+        .limit(10);
 
       let queued: any[] = [];
       for (const entry of (logEntries || [])) {
         try {
           const parsed = JSON.parse(entry.error || "[]");
-          queued = parsed.map((item: string) => {
+          const items = parsed.map((item: string) => {
             try { return JSON.parse(item); } catch { return null; }
           }).filter(Boolean);
-        } catch {}
+          queued = queued.concat(items);
+        } catch (e) {
+          console.error("Failed to parse needs-venue entry:", e);
+        }
       }
 
-      // Split: batch 4 = first half, batch 5 = second half
+      // Deduplicate by url
+      const seen = new Set<string>();
+      queued = queued.filter((item: any) => {
+        if (!item.url || seen.has(item.url)) return false;
+        seen.add(item.url);
+        return true;
+      });
+
+      // Split into 2 batches: batch 4 = first half, batch 5 = second half
       const half = Math.ceil(queued.length / 2);
       const start = (targetBatch - 4) * half;
       const slice = queued.slice(start, start + half);
-      console.log(`Venue resolution: ${slice.length} events (batch ${targetBatch}, offset ${start})`);
+      console.log(`Venue resolution: ${slice.length} events (batch ${targetBatch}, offset ${start}, total queued ${queued.length})`);
 
       const events: ScrapedEvent[] = [];
       let processed = 0;
+      let errors = 0;
 
       for (const item of slice) {
-        if (!hasTimeBudget()) break;
+        if (!hasTimeBudget()) {
+          console.log(`Time budget exhausted after ${processed} events`);
+          break;
+        }
         if (!item.url) continue;
 
-        const detail = await firecrawlScrapeJson(
-          firecrawlKey, item.url, detailSchema,
-          "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
-          5000
-        );
+        try {
+          const detail = await firecrawlScrapeJson(
+            firecrawlKey, item.url, detailSchema,
+            "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
+            5000
+          );
 
-        if (detail) {
-          let venue: string | null = null;
+          if (detail) {
+            let venue: string | null = null;
 
-          if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
-            venue = normalizeVenueName(detail.venue_name);
-          }
-          if (!venue && detail.address) {
-            venue = resolveVenueFromAddress(detail.address);
-          }
-          if (!venue) {
-            const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
-            venue = existingVenueMap.get(dayKey) || null;
-          }
+            if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
+              venue = normalizeVenueName(detail.venue_name);
+            }
+            if (!venue && detail.address) {
+              venue = resolveVenueFromAddress(detail.address);
+            }
+            if (!venue) {
+              const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
+              venue = existingVenueMap.get(dayKey) || null;
+            }
 
-          if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
-            events.push({
-              artist: item.artist,
-              venue,
-              date: item.date,
-              ticket_url: detail.ticket_url || item.url,
-              tickets_available: detail.tickets_available ?? true,
-              image_url: isValidImageUrl(detail.image_url) ? detail.image_url : (isValidImageUrl(item.image_url) ? item.image_url : null),
-              event_type: item.event_type || "concert",
-              source: "evently",
-              source_url: item.url,
-            });
+            if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+              events.push({
+                artist: item.artist,
+                venue,
+                date: item.date,
+                ticket_url: detail.ticket_url || item.url,
+                tickets_available: detail.tickets_available ?? true,
+                image_url: isValidImageUrl(detail.image_url) ? detail.image_url : (isValidImageUrl(item.image_url) ? item.image_url : null),
+                event_type: item.event_type || "concert",
+                source: "evently",
+                source_url: item.url,
+              });
+            }
           }
+        } catch (e) {
+          errors++;
+          console.error(`Detail scrape failed for ${item.artist}: ${e.message || e}`);
         }
 
         processed++;
+        // Batch upsert every 20 events to avoid losing progress
+        if (events.length >= 20) {
+          try {
+            await upsertEvents(events.splice(0, events.length));
+          } catch (e) {
+            console.error(`Batch upsert failed: ${e.message || e}`);
+          }
+        }
         if (processed % 5 === 0) await delay(1000);
       }
 
-      if (events.length > 0) await upsertEvents(events);
+      // Upsert remaining events
+      if (events.length > 0) {
+        try {
+          await upsertEvents(events);
+        } catch (e) {
+          console.error(`Final upsert failed: ${e.message || e}`);
+        }
+      }
       totalScraped = processed;
+      console.log(`Venue resolution done: ${processed} processed, ${totalUpserted} upserted, ${errors} errors`);
     }
 
     // ==================== BATCH 6: VENUE-SPECIFIC SOURCES ====================
