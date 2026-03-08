@@ -73,6 +73,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
   };
 
   return (
+    <>
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="container flex items-center justify-between py-4">
         <div className="flex items-center gap-3">
