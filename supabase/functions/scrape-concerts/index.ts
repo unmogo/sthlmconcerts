@@ -401,7 +401,7 @@ Deno.serve(async (req) => {
     // Load existing concerts for venue matching
     const { data: existingConcerts } = await supabase
       .from("concerts")
-      .select("artist, venue, date")
+      .select("id, artist, venue, date")
       .gte("date", new Date().toISOString());
 
     const existingVenueMap = new Map<string, string>();
@@ -418,37 +418,26 @@ Deno.serve(async (req) => {
     let totalUpserted = 0;
     let totalScraped = 0;
 
+    // Pre-build a map of existing concerts by normalized key for fast dedup
+    const existingById = new Map<string, { id: string; artist: string; venue: string }>();
+    for (const c of (existingConcerts || [])) {
+      const key = `${normalizeArtist(c.artist)}|${normalizeVenueKey(c.venue)}|${dateOnly(c.date)}`;
+      existingById.set(key, c as any);
+    }
+
     async function upsertEvents(events: ScrapedEvent[]) {
       let count = 0;
       for (const e of events) {
         e.venue = normalizeVenueName(e.venue);
         if (isInvalidVenue(e.venue)) continue;
-        if (!isStockholmVenue(e.venue)) {
-          console.log(`Rejected non-Stockholm venue: "${e.venue}" for "${e.artist}"`);
-          continue;
-        }
+        if (!isStockholmVenue(e.venue)) continue;
 
         const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
         if (deletedKeys.has(key)) continue;
 
-        const dayStart = `${dateOnly(e.date)}T00:00:00Z`;
-        const dayEnd = `${dateOnly(e.date)}T23:59:59Z`;
-
-        const { data: sameDayCandidates } = await supabase
-          .from("concerts")
-          .select("id, artist, venue")
-          .gte("date", dayStart)
-          .lt("date", dayEnd)
-          .limit(100);
-
-        const normalizedArtist = normalizeArtist(e.artist);
-        const normalizedVenue = normalizeVenueKey(e.venue);
-        const match = (sameDayCandidates || []).find((c: any) =>
-          normalizeArtist(c.artist) === normalizedArtist && normalizeVenueKey(c.venue) === normalizedVenue
-        );
-
-        if (match?.id) {
-          // Update existing with new data
+        const existing = existingById.get(key);
+        if (existing) {
+          // Update existing
           const updateData: any = {};
           if (isValidTicketUrl(e.ticket_url)) updateData.ticket_url = e.ticket_url;
           if (isValidImageUrl(e.image_url)) updateData.image_url = e.image_url;
@@ -456,7 +445,7 @@ Deno.serve(async (req) => {
           if (e.source_url) updateData.source_url = e.source_url;
           updateData.tickets_available = e.tickets_available ?? false;
 
-          const { error } = await supabase.from("concerts").update(updateData).eq("id", match.id);
+          const { error } = await supabase.from("concerts").update(updateData).eq("id", (existing as any).id);
           if (!error) count++;
           continue;
         }
@@ -491,34 +480,115 @@ Deno.serve(async (req) => {
 
     console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chain}) ===`);
 
-    // ==================== BATCH 1-3: EVENTLY LISTING PAGES ====================
-    // Scrape evently listing pages directly with JSON extraction.
-    // Each page shows ~8-12 events with title, date, image, category, link.
-    // Title often contains venue: "13/10 MARKO HIETALA | DEBASER NOVA"
+    // ==================== BATCH 1-3: EVENTLY LISTING PAGES (MARKDOWN PARSE) ====================
     if (targetBatch >= 1 && targetBatch <= 3) {
-      // Batch 1: music pages 1-15, Batch 2: music pages 16-40, Batch 3: music 41-65 + standup
       let pages: { url: string; category: string }[] = [];
 
       if (targetBatch === 1) {
-        for (let p = 1; p <= 15; p++) {
+        for (let p = 1; p <= 20; p++)
           pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=music&page=${p}`, category: "music" });
-        }
       } else if (targetBatch === 2) {
-        for (let p = 16; p <= 40; p++) {
+        for (let p = 21; p <= 45; p++)
           pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=music&page=${p}`, category: "music" });
-        }
       } else {
-        for (let p = 41; p <= 65; p++) {
+        for (let p = 46; p <= 65; p++)
           pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=music&page=${p}`, category: "music" });
-        }
-        for (let p = 1; p <= 15; p++) {
+        for (let p = 1; p <= 20; p++)
           pages.push({ url: `https://evently.se/en/place/se/stockholm?categories=standup&page=${p}`, category: "standup" });
-        }
       }
 
       const allEvents: ScrapedEvent[] = [];
-      const needsVenueResolution: string[] = []; // detail URLs for events without venue
+      const needsVenueResolution: string[] = [];
       let emptyPagesInRow = 0;
+
+      // Parse Evently markdown listing format:
+      // [![Title](image_url)\\\n...\n**Title**\\\n...\nDate](event_url)
+      function parseEventlyMarkdown(md: string, category: string): { events: ScrapedEvent[]; unresolved: string[] } {
+        const events: ScrapedEvent[] = [];
+        const unresolved: string[] = [];
+
+        // Match pattern: [![...](image)]...](url) blocks
+        const blockRegex = /\[!\[([^\]]*)\]\(([^)]*)\)[^\]]*\]\(([^)]+)\)/g;
+        let match;
+        while ((match = blockRegex.exec(md)) !== null) {
+          const title = match[1].trim();
+          const imageUrl = match[2].trim();
+          const eventUrl = match[3].trim();
+
+          if (!title || !eventUrl.includes("evently.se/en/events/")) continue;
+
+          // Extract date from the text between image and link close
+          // Look for the full block text to find date
+          const blockStart = match.index;
+          const blockEnd = blockStart + match[0].length;
+          const fullBlock = md.substring(Math.max(0, blockStart - 10), Math.min(md.length, blockEnd + 200));
+
+          // Parse date from URL slug: /260315-1930 → 2026-03-15T19:30
+          let parsedDate: Date | null = null;
+          const slugDateMatch = eventUrl.match(/\/(\d{6})-(\d{4})$/);
+          if (slugDateMatch) {
+            const [_, datePart, timePart] = slugDateMatch;
+            const year = "20" + datePart.substring(0, 2);
+            const month = datePart.substring(2, 4);
+            const day = datePart.substring(4, 6);
+            const hour = timePart.substring(0, 2);
+            const minute = timePart.substring(2, 4);
+            parsedDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:00`);
+          }
+
+          if (!parsedDate || isNaN(parsedDate.getTime()) || parsedDate < new Date()) continue;
+
+          // Extract artist + venue from title
+          const { artist, venue: titleVenue } = extractVenueFromTitle(title);
+          if (!artist || artist.length < 2) continue;
+
+          // Detect category from block text
+          let eventType = category === "standup" ? "comedy" : "concert";
+          if (/comedy|standup|stand-up/i.test(fullBlock)) eventType = "comedy";
+
+          // Resolve venue
+          let venue = titleVenue;
+
+          if (!venue) {
+            const dayKey = `${normalizeArtist(artist)}|${dateOnly(parsedDate.toISOString())}`;
+            venue = existingVenueMap.get(dayKey) || null;
+          }
+
+          if (!venue) {
+            // Try extracting venue from URL slug
+            const slugMatch = eventUrl.match(/\/en\/events\/[^/]+\/([^/]+)/);
+            if (slugMatch) {
+              const slugText = slugMatch[1].replace(/-/g, " ").toLowerCase();
+              for (const [key, v] of Object.entries(ADDRESS_TO_VENUE)) {
+                if (slugText.includes(key)) { venue = v; break; }
+              }
+            }
+          }
+
+          if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+            events.push({
+              artist,
+              venue,
+              date: parsedDate.toISOString(),
+              ticket_url: eventUrl,
+              tickets_available: true,
+              image_url: isValidImageUrl(imageUrl) ? imageUrl : null,
+              event_type: eventType,
+              source: "evently",
+              source_url: eventUrl,
+            });
+          } else {
+            unresolved.push(JSON.stringify({
+              artist,
+              date: parsedDate.toISOString(),
+              url: eventUrl,
+              image_url: imageUrl || null,
+              event_type: eventType,
+            }));
+          }
+        }
+        return { events, unresolved };
+      }
 
       for (const page of pages) {
         if (!hasTimeBudget()) break;
@@ -528,94 +598,36 @@ Deno.serve(async (req) => {
         }
 
         console.log(`Scraping ${page.url}...`);
-        const result = await firecrawlScrapeJson(
-          firecrawlKey, page.url, eventlyListingSchema,
-          "Extract ALL event cards shown on this listing page. For each card: the exact title text, the date/time (convert to ISO 8601, year 2026 unless otherwise shown), the category badge text, the full event detail URL (starts with https://evently.se), and the card's background image URL.",
-          10000
-        );
+        const md = await firecrawlScrapeMarkdown(firecrawlKey, page.url, 8000);
 
-        if (!result?.events?.length) {
+        if (!md || md.length < 100) {
           emptyPagesInRow++;
-          console.log(`No events found on page`);
+          console.log("No content on page");
           await delay(1000);
           continue;
         }
 
-        emptyPagesInRow = 0;
-        console.log(`Found ${result.events.length} events on page`);
+        const { events, unresolved } = parseEventlyMarkdown(md, page.category);
+        emptyPagesInRow = events.length === 0 && unresolved.length === 0 ? emptyPagesInRow + 1 : 0;
 
-        for (const e of result.events) {
-          if (!e.title || !e.date) continue;
+        allEvents.push(...events);
+        needsVenueResolution.push(...unresolved);
+        totalScraped += events.length + unresolved.length;
 
-          let parsedDate: Date;
-          try {
-            parsedDate = new Date(e.date);
-            if (isNaN(parsedDate.getTime())) continue;
-          } catch { continue; }
-
-          if (parsedDate < new Date()) continue;
-
-          // Extract artist and venue from title
-          const { artist, venue: titleVenue } = extractVenueFromTitle(e.title);
-          if (!artist || artist.length < 2) continue;
-
-          let eventType = page.category === "standup" ? "comedy" : "concert";
-          if (e.category && /comedy|standup|stand-up/i.test(e.category)) eventType = "comedy";
-
-          // Resolve venue: from title → from existing DB → from URL slug
-          let venue = titleVenue;
-
-          if (!venue) {
-            const dayKey = `${normalizeArtist(artist)}|${dateOnly(parsedDate.toISOString())}`;
-            venue = existingVenueMap.get(dayKey) || null;
-          }
-
-          if (!venue && e.event_url) {
-            const slug = e.event_url.match(/\/en\/events\/[^/]+\/([^/]+)/)?.[0] || "";
-            const slugText = slug.replace(/[-/]/g, " ").toLowerCase();
-            for (const [key, v] of Object.entries(ADDRESS_TO_VENUE)) {
-              if (slugText.includes(key)) { venue = v; break; }
-            }
-          }
-
-          if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
-            allEvents.push({
-              artist,
-              venue,
-              date: parsedDate.toISOString(),
-              ticket_url: e.event_url || null,
-              tickets_available: true,
-              image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
-              event_type: eventType,
-              source: "evently",
-              source_url: e.event_url || page.url,
-            });
-          } else if (e.event_url) {
-            // Queue for detail page scraping
-            needsVenueResolution.push(JSON.stringify({
-              artist,
-              date: parsedDate.toISOString(),
-              url: e.event_url,
-              image_url: e.image_url || null,
-              event_type: eventType,
-            }));
-          }
-        }
-
-        totalScraped += result.events.length;
+        console.log(`Page: ${events.length} with venue, ${unresolved.length} unresolved`);
         await delay(1500);
       }
 
       if (allEvents.length > 0) await upsertEvents(allEvents);
 
-      // Store unresolved events for batch 4-5
-      if (needsVenueResolution.length > 0 && targetBatch === 3) {
+      // Store unresolved for batch 4-5
+      if (needsVenueResolution.length > 0) {
         await supabase.from("scrape_log").insert({
           batch: targetBatch,
           source: "evently-needs-venue",
           events_found: needsVenueResolution.length,
           events_upserted: 0,
-          error: JSON.stringify(needsVenueResolution.slice(0, 200)), // cap at 200
+          error: JSON.stringify(needsVenueResolution.slice(0, 300)),
         });
       }
 
@@ -913,6 +925,9 @@ Deno.serve(async (req) => {
         .or("venue.ilike.%example.com%,ticket_url.ilike.%example.com%");
     }
 
+    // Chain FIRST so next batch starts even if upsert is slow
+    if (chain) await triggerNextBatch(targetBatch, supabase);
+
     // Log this batch
     const elapsed = Math.round((Date.now() - START_TIME) / 1000);
     await supabase.from("scrape_log").insert({
@@ -925,8 +940,6 @@ Deno.serve(async (req) => {
 
     const message = `Batch ${targetBatch}: scraped=${totalScraped}, upserted=${totalUpserted} (${elapsed}s)`;
     console.log(message);
-
-    if (chain) await triggerNextBatch(targetBatch, supabase);
 
     return new Response(JSON.stringify({ success: true, message, batch: targetBatch }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });
