@@ -128,8 +128,9 @@ function isInvalidVenue(venue: string): boolean {
 }
 
 // ==================== EVENTLY MARKDOWN PARSER ====================
-// Parses the consistent card format from evently listing pages:
-// [![Title](image)\\\nCategory\\\n**Title**\\\nStockholm, Sweden\\\nDate](detail_url)
+// Each card in evently markdown looks like:
+// [![Title](imageUrl)\\\nCategory\\\n**Title**\\\nStockholm, Sweden\\\nDate](detailUrl)
+// The detail URL always contains /en/events/ and ends with /YYMMDD-HHMM
 
 interface EventlyCard {
   artist: string;
@@ -141,65 +142,58 @@ interface EventlyCard {
 
 function parseEventlyMarkdown(markdown: string): EventlyCard[] {
   const cards: EventlyCard[] = [];
+  const seen = new Set<string>();
 
-  // Match pattern: [![...](image_url)\\...Category\\...**Title**\\...Date](detail_url)
-  const cardRegex = /\[!\[([^\]]*)\]\(([^)]*)\)[^[]*?\*\*([^*]+)\*\*[^[]*?\\+\s*\\*\s*\n\s*([^\]]+?)\]\(([^)]+)\)/g;
-
-  let match;
-  while ((match = cardRegex.exec(markdown)) !== null) {
-    const [, , imageUrl, title, datePart, detailUrl] = match;
+  // Strategy: find all evently detail URLs, then extract title from **bold** before each
+  const lines = markdown.split("\n");
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     
-    // Extract category from between image and title
-    const fullBlock = match[0];
-    const categoryMatch = fullBlock.match(/\\+\s*\n\s*([A-Za-z][A-Za-z /&]+?)\\+\s*\n/);
-    const category = categoryMatch ? categoryMatch[1].trim() : "Music";
+    // Find lines ending with ](https://evently.se/en/events/...)
+    const urlMatch = line.match(/\]\((https:\/\/evently\.se\/en\/events\/[^)]+)\)/);
+    if (!urlMatch) continue;
+    
+    const detailUrl = urlMatch[1];
+    if (seen.has(detailUrl)) continue;
+    seen.add(detailUrl);
 
-    cards.push({
-      artist: title.trim(),
-      date_text: datePart.trim().replace(/\\+/g, "").replace(/\s+/g, " ").trim(),
-      detail_url: detailUrl.startsWith("http") ? detailUrl : `https://evently.se${detailUrl}`,
-      image_url: imageUrl || null,
-      category,
-    });
-  }
+    // Look backwards up to 10 lines to find **Title** and image
+    let artist = "";
+    let imageUrl: string | null = null;
+    let category = "Music";
+    let dateText = "";
 
-  // Fallback: simpler line-by-line parsing if regex misses cards
-  if (cards.length === 0) {
-    const lines = markdown.split("\n");
-    let i = 0;
-    while (i < lines.length) {
-      const line = lines[i];
-      // Look for **Title** pattern
-      const titleMatch = line.match(/\*\*(.+?)\*\*/);
-      if (titleMatch) {
-        const artist = titleMatch[1].trim();
-        // Look for detail URL nearby
-        let detailUrl = "";
-        let dateText = "";
-        let imageUrl: string | null = null;
-        
-        // Search surrounding lines
-        for (let j = Math.max(0, i - 5); j < Math.min(lines.length, i + 5); j++) {
-          const urlMatch = lines[j].match(/\(https:\/\/evently\.se\/en\/events\/[^)]+\)/);
-          if (urlMatch) detailUrl = urlMatch[0].slice(1, -1);
-          
-          const imgMatch = lines[j].match(/\(https:\/\/evently\.se\/api\/file\/[^)]+\)/);
-          if (imgMatch) imageUrl = imgMatch[0].slice(1, -1);
-          
-          // Date patterns like "Mar 15 07:30 PM" or "May 1 05:00 PM - 11:00 PM"
-          const dateMatch = lines[j].match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{1,2}:\d{2}\s*(AM|PM)/i);
-          if (dateMatch) dateText = lines[j].replace(/\\+/g, "").trim();
-        }
-        
-        if (detailUrl && artist) {
-          cards.push({ artist, date_text: dateText, detail_url: detailUrl, image_url: imageUrl, category: "Music" });
-        }
-      }
-      i++;
+    // The date text is usually on the same line or just before the URL closing
+    // e.g., "Mar 15 07:30 PM](url)" — extract what's before ](url) on the same line
+    const dateBeforeUrl = line.match(/([A-Z][a-z]{2}\s+\d{1,2}.*?)\]\(/);
+    if (dateBeforeUrl) {
+      dateText = dateBeforeUrl[1].replace(/\\/g, "").trim();
     }
-    // Dedupe by detail_url
-    const seen = new Set<string>();
-    return cards.filter(c => { if (seen.has(c.detail_url)) return false; seen.add(c.detail_url); return true; });
+
+    for (let j = i; j >= Math.max(0, i - 10); j--) {
+      // Find **Title**
+      const titleMatch = lines[j].match(/\*\*(.+?)\*\*/);
+      if (titleMatch && !artist) {
+        artist = titleMatch[1].trim();
+      }
+      
+      // Find image URL
+      const imgMatch = lines[j].match(/\((https:\/\/evently\.se\/api\/file\/[^)]+)\)/);
+      if (imgMatch && !imageUrl) {
+        imageUrl = imgMatch[1];
+      }
+
+      // Find category (standalone text line like "Music\\" or "Jazz / Blues\\")
+      const catMatch = lines[j].match(/^([A-Za-z][A-Za-z /&]+?)\\*$/);
+      if (catMatch) {
+        category = catMatch[1].trim();
+      }
+    }
+
+    if (artist) {
+      cards.push({ artist, date_text: dateText, detail_url: detailUrl, image_url: imageUrl, category });
+    }
   }
 
   return cards;
