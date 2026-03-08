@@ -1,6 +1,7 @@
-import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, ImageIcon } from "lucide-react";
+import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, ImageIcon, Activity } from "lucide-react";
 import { triggerScrape, triggerFetchImages } from "@/lib/api/concerts";
 import { useState } from "react";
+import { ScrapeLogDashboard } from "./ScrapeLogDashboard";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +21,7 @@ interface HeaderProps {
 export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
   const [scraping, setScraping] = useState(false);
   const [fetchingImages, setFetchingImages] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, isAdmin, signOut } = useAuth();
@@ -71,6 +73,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
   };
 
   return (
+    <>
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="container flex items-center justify-between py-4">
         <div className="flex items-center gap-3">
@@ -152,6 +155,14 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
               </button>
 
               <button
+                onClick={() => setShowLogs(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
+              >
+                <Activity className="h-4 w-4" />
+                Logs
+              </button>
+
+              <button
                 onClick={handleScrape}
                 disabled={scraping}
                 className="inline-flex items-center gap-2 rounded-lg bg-gradient-neon px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -188,5 +199,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
         </div>
       </div>
     </header>
+    {showLogs && <ScrapeLogDashboard onClose={() => setShowLogs(false)} />}
+    </>
   );
 }
