@@ -175,6 +175,7 @@ export type Database = {
     }
     Functions: {
       cleanup_old_concerts: { Args: never; Returns: undefined }
+      date_only: { Args: { ts: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
