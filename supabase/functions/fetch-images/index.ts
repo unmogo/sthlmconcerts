@@ -151,9 +151,9 @@ Deno.serve(async (req) => {
 
     const { data: concerts, error } = await supabase
       .from("concerts")
-      .select("id, artist, event_type")
+      .select("id, artist, event_type, image_url")
       .gte("date", new Date().toISOString())
-      .is("image_url", null)
+      .or("image_url.is.null,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%")
       .order("date", { ascending: true });
 
     if (error) throw error;
