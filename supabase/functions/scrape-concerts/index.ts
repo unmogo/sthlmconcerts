@@ -8,11 +8,7 @@ const corsHeaders = {
 
 const START_TIME = Date.now();
 const TIME_BUDGET_MS = 240_000;
-
-function hasTimeBudget(): boolean {
-  return Date.now() - START_TIME < TIME_BUDGET_MS;
-}
-
+const hasTimeBudget = () => Date.now() - START_TIME < TIME_BUDGET_MS;
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ==================== NORMALIZATION ====================
@@ -24,7 +20,6 @@ const dateOnly = (d: string) => {
   try { return new Date(d).toISOString().split("T")[0]; } catch { return d; }
 };
 
-// Venue normalization: raw names → canonical
 const VENUE_NORMALIZATION: Record<string, string> = {
   "stora scen": "Gröna Lund",
   "stora scenen": "Gröna Lund",
@@ -35,55 +30,54 @@ const VENUE_NORMALIZATION: Record<string, string> = {
   "tele2 arena": "Strawberry Arena",
 };
 
-// Address fragments → known venue (for evently detail page enrichment)
+// Address fragments from evently detail pages → known Stockholm venues
 const ADDRESS_TO_VENUE: Record<string, string> = {
   "kyrkslingan": "Tyska Kyrkan",
-  "barnhusgatan 12-14": "Nalen",
+  "barnhusgatan 12": "Nalen",
   "djurgårdsslätten": "Gröna Lund",
-  "barnhusgatan": "Nalen",
   "medborgarplatsen 3": "Södra Teatern",
   "berzelii park": "Berns",
   "globentorget": "Avicii Arena",
   "johanneshovsvägen": "Avicii Arena",
   "arenaslingan 14": "Strawberry Arena",
-  "torkel knutssonsgatan 2": "Münchenbryggeriet",
-  "cirkus": "Cirkus",
+  "torkel knutssonsgatan": "Münchenbryggeriet",
   "djurgårdsvägen 43": "Cirkus",
   "hötorget 8": "Konserthuset",
   "hornsgatan 75": "Debaser",
-  "hornsgatan": "Debaser",
   "trädgårdsgatan": "Trädgården",
   "hammarby slussväg": "Trädgården",
-  "under bron": "Under Bron",
   "söder mälarstrand": "Kagelbanan",
   "maria skolgata": "Fållan",
   "fryshuset": "Fryshuset",
   "slakthusområdet": "Slaktkyrkan",
-  "arenan solna": "Strawberry Arena",
-  "stora scenen gröna lund": "Gröna Lund",
-  "lilla scenen gröna lund": "Gröna Lund",
-  "stockholm waterfront": "Stockholm Waterfront",
-  "nils ericsonsplatsen": "Stockholm Waterfront",
   "klarabergsviadukten": "Stockholm Waterfront",
+  "nils ericssonplatsen": "Stockholm Waterfront",
   "vasagatan 28": "Vasateatern",
   "kungsgatan 18": "Göta Lejon",
-  "barnängsvägen": "Fållan",
-  "fasching": "Fasching",
   "kungsgatan 63": "Fasching",
-  "kulturhuset": "Kulturhuset Stadsteatern",
   "sergels torg": "Kulturhuset Stadsteatern",
-  "drottninggatan 71b": "Kulturhuset Stadsteatern",
-  "slussen": "Kolingsborg",
-  "rival": "Hotel Rival",
-  "mariatorget": "Hotel Rival",
-  "stampen": "Stampen",
+  "drottninggatan 71": "Kulturhuset Stadsteatern",
   "stora nygatan 5": "Stampen",
-  "glen miller": "Glenn Miller Café",
-  "brunnsgatan 21a": "Glenn Miller Café",
-  "chinateatern": "Chinateatern",
+  "brunnsgatan 21": "Glenn Miller Café",
   "berzelii park 9": "Chinateatern",
+  "eriksdalslunden": "Eriksdalsbadet",
+  "ringvägen 1": "Södra Teatern",
+  "mosebacke torg": "Södra Teatern",
+  "tantogatan": "Tanto",
+  "tanto": "Tanto",
   "nöjesteatern": "Nöjesteatern",
   "hyvens": "Hyvens",
+  "cirkus": "Cirkus",
+  "fasching": "Fasching",
+  "kulturhuset": "Kulturhuset Stadsteatern",
+  "rival": "Hotel Rival",
+  "stampen": "Stampen",
+  "annexet": "Annexet",
+  "hovet": "Hovet",
+  "avicii arena": "Avicii Arena",
+  "globen": "Avicii Arena",
+  "strawberry arena": "Strawberry Arena",
+  "waterfront": "Stockholm Waterfront",
 };
 
 function resolveVenueFromAddress(address: string): string | null {
@@ -102,24 +96,22 @@ function normalizeVenueName(venue: string): string {
   return venue.replace(/,\s*(stockholm|sweden|sverige)$/i, "").trim();
 }
 
-// Stockholm venue whitelist
 const STOCKHOLM_VENUE_KEYWORDS = [
   "stockholm", "gröna lund", "grona lund", "cirkus", "globen", "avicii arena",
   "hovet", "strawberry arena", "konserthuset", "södra teatern", "sodra teatern",
   "kulturhuset", "annexet", "debaser", "berns", "nalen", "münchenbryggeriet",
   "munchenbryggeriet", "filadelfia", "fållan", "fallan", "vasateatern",
-  "göta lejon", "gota lejon", "chinateatern", "rival", "scandinavium",
+  "göta lejon", "gota lejon", "chinateatern", "rival",
   "ericsson globe", "tele2", "friends arena", "stockholm live",
-  "kungsträdgården", "kungstradgarden", "skansen", "grönan",
-  "lilla scen", "stora scen", "sjöhistoriska", "nöjesteatern", "hyvens",
-  "slaktkyrkan", "kraken", "fryshuset", "arenan", "trädgården", "tradgarden",
-  "under bron", "sthlm", "kolingsborg", "skybar", "fasching", "stampen",
-  "glen miller", "jazzclub", "blå dörren", "kagelbanan", "waterfront",
+  "kungsträdgården", "skansen", "nöjesteatern", "hyvens",
+  "slaktkyrkan", "kraken", "fryshuset", "trädgården", "tradgarden",
+  "under bron", "sthlm", "kolingsborg", "fasching", "stampen",
+  "glen miller", "kagelbanan", "waterfront", "tanto", "eriksdal",
+  "tyska kyrkan", "riddarhuset",
 ];
 
 function isStockholmVenue(venue: string): boolean {
-  const lower = venue.toLowerCase();
-  return STOCKHOLM_VENUE_KEYWORDS.some((kw) => lower.includes(kw));
+  return STOCKHOLM_VENUE_KEYWORDS.some((kw) => venue.toLowerCase().includes(kw));
 }
 
 function isValidTicketUrl(url: string | undefined | null): boolean {
@@ -128,6 +120,146 @@ function isValidTicketUrl(url: string | undefined | null): boolean {
   if (lower.includes("example.com") || lower.includes("id-preview--") || lower.includes("lovable.app") || lower.includes("localhost")) return false;
   if (lower === "#" || lower === "/") return false;
   try { new URL(url); return true; } catch { return false; }
+}
+
+function isInvalidVenue(venue: string): boolean {
+  const lower = venue.toLowerCase().trim();
+  return lower === "stockholm" || lower === "stockholm, sweden" || lower === "sweden" || lower === "";
+}
+
+// ==================== EVENTLY MARKDOWN PARSER ====================
+// Each card in evently markdown looks like:
+// [![Title](imageUrl)\\\nCategory\\\n**Title**\\\nStockholm, Sweden\\\nDate](detailUrl)
+// The detail URL always contains /en/events/ and ends with /YYMMDD-HHMM
+
+interface EventlyCard {
+  artist: string;
+  date_text: string;
+  detail_url: string;
+  image_url: string | null;
+  category: string;
+}
+
+function parseEventlyMarkdown(markdown: string): EventlyCard[] {
+  const cards: EventlyCard[] = [];
+  const seen = new Set<string>();
+
+  // Strategy: find all evently detail URLs, then extract title from **bold** before each
+  const lines = markdown.split("\n");
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Find lines ending with ](https://evently.se/en/events/...)
+    const urlMatch = line.match(/\]\((https:\/\/evently\.se\/en\/events\/[^)]+)\)/);
+    if (!urlMatch) continue;
+    
+    const detailUrl = urlMatch[1];
+    if (seen.has(detailUrl)) continue;
+    seen.add(detailUrl);
+
+    // Look backwards up to 10 lines to find **Title** and image
+    let artist = "";
+    let imageUrl: string | null = null;
+    let category = "Music";
+    let dateText = "";
+
+    // The date text is usually on the same line or just before the URL closing
+    // e.g., "Mar 15 07:30 PM](url)" — extract what's before ](url) on the same line
+    const dateBeforeUrl = line.match(/([A-Z][a-z]{2}\s+\d{1,2}.*?)\]\(/);
+    if (dateBeforeUrl) {
+      dateText = dateBeforeUrl[1].replace(/\\/g, "").trim();
+    }
+
+    for (let j = i; j >= Math.max(0, i - 10); j--) {
+      // Find **Title**
+      const titleMatch = lines[j].match(/\*\*(.+?)\*\*/);
+      if (titleMatch && !artist) {
+        artist = titleMatch[1].trim();
+      }
+      
+      // Find image URL
+      const imgMatch = lines[j].match(/\((https:\/\/evently\.se\/api\/file\/[^)]+)\)/);
+      if (imgMatch && !imageUrl) {
+        imageUrl = imgMatch[1];
+      }
+
+      // Find category (standalone text line like "Music\\" or "Jazz / Blues\\")
+      const catMatch = lines[j].match(/^([A-Za-z][A-Za-z /&]+?)\\*$/);
+      if (catMatch) {
+        category = catMatch[1].trim();
+      }
+    }
+
+    if (artist) {
+      cards.push({ artist, date_text: dateText, detail_url: detailUrl, image_url: imageUrl, category });
+    }
+  }
+
+  return cards;
+}
+
+// Parse evently date text like "Mar 15 07:30 PM" or "Apr 14 2027 07:00 PM"
+function parseEventlyDate(dateText: string): string | null {
+  if (!dateText) return null;
+  
+  // Clean up
+  const clean = dateText.replace(/\\+/g, "").replace(/\s+/g, " ").trim();
+  
+  // Try to extract date/time from URL slug (more reliable): 260315-1930 = 2026-03-15T19:30
+  // This is handled separately
+  
+  // Try standard date parsing
+  const months: Record<string, number> = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  };
+  
+  // Pattern: "Mon", "Mar 15 07:30 PM", "Apr 14 2027 07:00 PM"
+  const match = clean.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(?:\s+(\d{4}))?\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (match) {
+    const month = months[match[1].toLowerCase()];
+    const day = parseInt(match[2]);
+    let year = match[3] ? parseInt(match[3]) : guessYear(month, day);
+    let hours = parseInt(match[4]);
+    const minutes = parseInt(match[5]);
+    const ampm = match[6].toUpperCase();
+    
+    if (ampm === "PM" && hours < 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    
+    return new Date(year, month, day, hours, minutes).toISOString();
+  }
+  
+  return null;
+}
+
+// Parse date from evently URL slug: /260315-1930 → 2026-03-15T19:30
+function parseDateFromUrl(url: string): string | null {
+  const slugMatch = url.match(/\/(\d{6})-(\d{4})$/);
+  if (!slugMatch) return null;
+  
+  const dateStr = slugMatch[1]; // e.g., "260315"
+  const timeStr = slugMatch[2]; // e.g., "1930"
+  
+  const year = 2000 + parseInt(dateStr.slice(0, 2));
+  const month = parseInt(dateStr.slice(2, 4)) - 1;
+  const day = parseInt(dateStr.slice(4, 6));
+  const hours = parseInt(timeStr.slice(0, 2));
+  const minutes = parseInt(timeStr.slice(2, 4));
+  
+  return new Date(year, month, day, hours, minutes).toISOString();
+}
+
+function guessYear(month: number, day: number): number {
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const candidate = new Date(thisYear, month, day);
+  // If the date is more than 30 days in the past, it's probably next year
+  if (candidate.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000) {
+    return thisYear + 1;
+  }
+  return thisYear;
 }
 
 // ==================== ARTIST IMAGE LOOKUP ====================
@@ -147,14 +279,15 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
     const mbArtist = mbData?.artists?.[0];
     if (!mbArtist?.id) { artistImageCache.set(cacheKey, null); return null; }
 
+    await delay(1100); // MusicBrainz rate limit: 1 req/sec
+
     const relRes = await fetch(
       `https://musicbrainz.org/ws/2/artist/${mbArtist.id}?inc=url-rels&fmt=json`,
       { headers: { "User-Agent": "SthlmConcerts/1.0 (contact@sthlmconcerts.app)" } }
     );
     const relData = await relRes.json();
-    const relations = relData?.relations || [];
-
-    const wikidataRel = relations.find((r: any) => r.type === "wikidata");
+    const wikidataRel = (relData?.relations || []).find((r: any) => r.type === "wikidata");
+    
     if (wikidataRel?.url?.resource) {
       const wikidataId = wikidataRel.url.resource.split("/").pop();
       const wdRes = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${wikidataId}&property=P18&format=json`);
@@ -162,14 +295,15 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
       const imageName = wdData?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
       if (imageName) {
         const filename = encodeURIComponent(imageName.replace(/ /g, "_"));
-        const data = new TextEncoder().encode(imageName.replace(/ /g, "_"));
-        const hashBuffer = await crypto.subtle.digest("MD5", data).catch(() => null);
+        const encoded = new TextEncoder().encode(imageName.replace(/ /g, "_"));
+        const hashBuffer = await crypto.subtle.digest("MD5", encoded).catch(() => null);
         let md5 = "";
         if (hashBuffer) {
           md5 = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
         } else {
           let hash = 0;
-          for (let i = 0; i < imageName.length; i++) { hash = ((hash << 5) - hash) + imageName.charCodeAt(i); hash |= 0; }
+          const str = imageName.replace(/ /g, "_");
+          for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
           md5 = Math.abs(hash).toString(16).padStart(32, "0");
         }
         const imageUrl = `https://upload.wikimedia.org/wikipedia/commons/thumb/${md5[0]}/${md5.slice(0, 2)}/${filename}/500px-${filename}`;
@@ -196,85 +330,71 @@ async function lookupArtistImage(artist: string): Promise<string | null> {
   }
 }
 
-// ==================== FIRECRAWL HELPERS ====================
+// ==================== FIRECRAWL ====================
 
-const eventlyListSchema = {
-  type: "object",
-  properties: {
-    events: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          artist: { type: "string", description: "Clean performer/event name" },
-          date: { type: "string", description: "ISO 8601 datetime" },
-          detail_url: { type: "string", description: "Full URL to evently detail page" },
-          image_url: { type: "string", description: "Image URL if present" },
-          category: { type: "string", description: "Music sub-genre or 'standup'" },
-        },
-        required: ["artist", "date", "detail_url"],
-      },
-    },
-  },
-  required: ["events"],
-};
-
-const eventlyDetailSchema = {
-  type: "object",
-  properties: {
-    venue_name: { type: "string", description: "Venue or location name (NOT 'Stockholm, Sweden')" },
-    address: { type: "string", description: "Full street address" },
-    ticket_url: { type: "string", description: "URL to buy tickets" },
-    price: { type: "string", description: "Ticket price if shown" },
-    tickets_available: { type: "boolean", description: "Whether tickets are available for purchase" },
-    description: { type: "string", description: "Short event description" },
-  },
-  required: ["address"],
-};
-
-const secondarySourceSchema = {
-  type: "object",
-  properties: {
-    events: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          artist: { type: "string", description: "Clean performer name" },
-          venue: { type: "string", description: "Venue name" },
-          date: { type: "string", description: "ISO 8601 datetime" },
-          ticket_url: { type: "string", description: "URL to buy tickets" },
-          tickets_available: { type: "boolean" },
-          image_url: { type: "string" },
-        },
-        required: ["artist", "venue", "date"],
-      },
-    },
-  },
-  required: ["events"],
-};
-
-async function firecrawlScrape(apiKey: string, url: string, schema: any, prompt: string, options?: { waitFor?: number }): Promise<any> {
-  const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      url,
-      formats: ["json"],
-      jsonOptions: { schema, prompt },
-      onlyMainContent: true,
-      waitFor: options?.waitFor ?? 5000,
-    }),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    console.error(`Firecrawl error for ${url}:`, data);
+async function firecrawlScrapeMarkdown(apiKey: string, url: string, waitFor = 5000, scrollCount = 0): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  
+  // Build scroll actions for infinite-scroll pages
+  const actions: any[] = [];
+  for (let i = 0; i < scrollCount; i++) {
+    actions.push({ type: "scroll", direction: "down" });
+    actions.push({ type: "wait", milliseconds: 2000 });
+  }
+  
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        formats: ["markdown"],
+        onlyMainContent: false,
+        waitFor,
+        ...(actions.length > 0 ? { actions } : {}),
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (!response.ok) { console.error(`Firecrawl error for ${url}:`, data); return null; }
+    return data?.data?.markdown || data?.markdown || null;
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`Firecrawl fetch error for ${url}:`, err);
     return null;
   }
-  return data?.data?.json || data?.json || null;
 }
 
-// ==================== PIPELINE ====================
+async function firecrawlScrapeJson(apiKey: string, url: string, schema: any, prompt: string, waitFor = 5000): Promise<any> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        formats: ["json"],
+        jsonOptions: { schema, prompt },
+        onlyMainContent: true,
+        waitFor,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (!response.ok) { console.error(`Firecrawl error for ${url}:`, data); return null; }
+    return data?.data?.json || data?.json || null;
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`Firecrawl JSON error for ${url}:`, err);
+    return null;
+  }
+}
+
+// ==================== TYPES ====================
 
 interface ScrapedEvent {
   artist: string;
@@ -289,23 +409,58 @@ interface ScrapedEvent {
   source_url: string;
 }
 
-// TOTAL_BATCHES: 1 = evently, 2-5 = enrich detail pages, 6-10 = secondary sources
+// ==================== PIPELINE ====================
+
+// Batch 1-3: Evently pages (music page 5, 10, 15 + comedy page 5, 10)
+// Batch 4-5: Enrich events needing venues (detail page scraping)
+// Batch 6-7: Secondary sources (venue-specific)
+// Batch 8: Ticketmaster + Live Nation (top pages)
+// Batch 9: Comedy secondary
+// Batch 10: RA + All Things Live
 const TOTAL_BATCHES = 10;
+
+const secondarySourceSchema = {
+  type: "object",
+  properties: {
+    events: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          artist: { type: "string", description: "Clean performer name" },
+          venue: { type: "string", description: "Venue name" },
+          date: { type: "string", description: "ISO 8601 datetime" },
+          ticket_url: { type: "string", description: "Ticket URL" },
+          tickets_available: { type: "boolean" },
+          image_url: { type: "string" },
+        },
+        required: ["artist", "venue", "date"],
+      },
+    },
+  },
+  required: ["events"],
+};
+
+const detailSchema = {
+  type: "object",
+  properties: {
+    venue_name: { type: "string", description: "Venue/location name, NOT 'Stockholm, Sweden'" },
+    address: { type: "string", description: "Full street address" },
+    ticket_url: { type: "string", description: "URL to buy tickets" },
+    tickets_available: { type: "boolean", description: "Can tickets be purchased" },
+  },
+  required: ["address"],
+};
 
 async function triggerNextBatch(batch: number, supabase: any) {
   const nextBatch = batch + 1;
-  if (nextBatch > TOTAL_BATCHES) {
-    console.log("All batches complete.");
-    return;
-  }
+  if (nextBatch > TOTAL_BATCHES) { console.log("All batches complete."); return; }
   console.log(`Chaining → batch ${nextBatch}`);
   try {
     const { error } = await supabase.rpc("trigger_scrape_batch", { batch_num: nextBatch });
     if (error) console.error(`Chain failed:`, error.message);
     else console.log(`Queued batch ${nextBatch}`);
-  } catch (err) {
-    console.error(`Failed to trigger next batch:`, err);
-  }
+  } catch (err) { console.error(`Failed to trigger:`, err); }
 }
 
 Deno.serve(async (req) => {
@@ -328,15 +483,27 @@ Deno.serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Load deleted concerts to skip
+    // Load deleted concerts
     const { data: deletedConcerts } = await supabase.from("deleted_concerts").select("artist, venue, date");
     const deletedKeys = new Set(
       (deletedConcerts || []).map((d: any) => `${normalizeArtist(d.artist)}|${normalizeVenueKey(d.venue)}|${dateOnly(d.date)}`)
     );
+
+    // Load existing concerts for venue matching (used in batch 1-3)
+    const { data: existingConcerts } = await supabase
+      .from("concerts")
+      .select("artist, venue, date")
+      .gte("date", new Date().toISOString());
+    
+    const existingVenueMap = new Map<string, string>();
+    for (const c of (existingConcerts || [])) {
+      if (c.venue && !isInvalidVenue(c.venue)) {
+        existingVenueMap.set(`${normalizeArtist(c.artist)}|${dateOnly(c.date)}`, c.venue);
+      }
+    }
+    console.log(`Loaded ${existingVenueMap.size} existing venues, ${deletedKeys.size} deleted keys`);
 
     let totalUpserted = 0;
     let totalScraped = 0;
@@ -344,17 +511,13 @@ Deno.serve(async (req) => {
     async function upsertEvents(events: ScrapedEvent[]) {
       let count = 0;
       for (const e of events) {
+        if (isInvalidVenue(e.venue)) continue;
         const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
         if (deletedKeys.has(key)) continue;
 
-        // Reject "Stockholm, Sweden" as venue
-        if (e.venue.toLowerCase().includes("stockholm, sweden") || e.venue.toLowerCase() === "stockholm") continue;
-
         let imageUrl = e.image_url || null;
-        if (!imageUrl && e.event_type !== "comedy") {
-          imageUrl = await lookupArtistImage(e.artist);
-        }
-
+        // Skip image lookup during scrape — fetch-images handles this separately
+        
         const { error } = await supabase.from("concerts").upsert({
           artist: e.artist,
           venue: e.venue,
@@ -368,156 +531,147 @@ Deno.serve(async (req) => {
           source_url: e.source_url,
         }, { onConflict: "artist,venue,date" });
 
-        if (error) console.error(`Upsert error:`, error.message);
+        if (error) console.error(`Upsert error for "${e.artist}":`, error.message);
         else count++;
       }
       totalUpserted += count;
-      console.log(`Upserted ${count}/${events.length} events`);
+      console.log(`Upserted ${count}/${events.length}`);
     }
 
-    console.log(`=== Batch ${targetBatch} (chain=${chain}) ===`);
+    console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chain}) ===`);
 
-    // ==================== BATCH 1: EVENTLY (primary source) ====================
-    if (targetBatch === 1) {
-      // Load existing concerts for venue matching
-      const { data: existingConcerts } = await supabase
-        .from("concerts")
-        .select("artist, venue, date")
-        .gte("date", new Date().toISOString());
+    // ==================== BATCH 1-3: EVENTLY (markdown parsing, no AI credits) ====================
+    if (targetBatch >= 1 && targetBatch <= 3) {
+      const pageConfigs: Record<number, Array<{ url: string; type: string }>> = {
+        1: [
+          { url: "https://evently.se/en/place/se/stockholm?categories=music&page=5", type: "concert" },
+          { url: "https://evently.se/en/place/se/stockholm?categories=standup&page=5", type: "comedy" },
+        ],
+        2: [
+          { url: "https://evently.se/en/place/se/stockholm?categories=music&page=10", type: "concert" },
+          { url: "https://evently.se/en/place/se/stockholm?categories=standup&page=10", type: "comedy" },
+        ],
+        3: [
+          { url: "https://evently.se/en/place/se/stockholm?categories=music&page=15", type: "concert" },
+        ],
+      };
 
-      const existingMap = new Map<string, string>();
-      for (const c of (existingConcerts || [])) {
-        const key = `${normalizeArtist(c.artist)}|${dateOnly(c.date)}`;
-        if (c.venue && !c.venue.toLowerCase().includes("stockholm, sweden")) {
-          existingMap.set(key, c.venue);
-        }
-      }
-      console.log(`Loaded ${existingMap.size} existing concerts for venue matching`);
-
-      const categories = [
-        { url: "https://evently.se/en/place/se/stockholm?categories=music&page=60", type: "concert" },
-        { url: "https://evently.se/en/place/se/stockholm?categories=standup&page=60", type: "comedy" },
-      ];
-
+      const pages = pageConfigs[targetBatch] || [];
       const allEvents: ScrapedEvent[] = [];
-      const needsEnrichment: Array<{ artist: string; date: string; detail_url: string; image_url?: string; event_type: string }> = [];
+      const needsEnrichment: any[] = [];
 
-      for (const cat of categories) {
+      for (const page of pages) {
         if (!hasTimeBudget()) break;
-        console.log(`Scraping evently ${cat.type}...`);
+        console.log(`Scraping evently ${page.type} page...`);
+        
+        // Use 15 scrolls to load ~150+ events from infinite scroll
+        const markdown = await firecrawlScrapeMarkdown(firecrawlKey, page.url, 5000, 15);
 
-        const prompt = cat.type === "comedy"
-          ? "Extract ALL stand-up comedy events from this page. Get every card: artist/event name, date (ISO 8601, year is 2025 or 2026), and the detail page URL (starts with https://evently.se/en/events/). Also grab the image URL if present."
-          : "Extract ALL music events from this page. Get every card: artist/event name, date (ISO 8601, year is 2025 or 2026), and the detail page URL (starts with https://evently.se/en/events/). Also grab the image URL if present.";
+        const cards = parseEventlyMarkdown(markdown);
+        console.log(`Parsed ${cards.length} cards from evently ${page.type}`);
 
-        const result = await firecrawlScrape(firecrawlKey, cat.url, eventlyListSchema, prompt, { waitFor: 8000 });
-        if (!result?.events) {
-          console.log(`No events extracted from evently ${cat.type}`);
-          continue;
-        }
-        console.log(`Evently ${cat.type}: ${result.events.length} events`);
+        for (const card of cards) {
+          // Parse date from URL slug (most reliable)
+          const date = parseDateFromUrl(card.detail_url) || parseEventlyDate(card.date_text);
+          if (!date) {
+            console.log(`Could not parse date for "${card.artist}": ${card.date_text}`);
+            continue;
+          }
 
-        for (const ev of result.events) {
-          if (!ev.artist || !ev.date) continue;
-
-          const artistClean = ev.artist.split(/[:\-–—|]/)[0].trim();
-          const lookupKey = `${normalizeArtist(artistClean)}|${dateOnly(ev.date)}`;
-          const existingVenue = existingMap.get(lookupKey);
+          const lookupKey = `${normalizeArtist(card.artist)}|${dateOnly(date)}`;
+          const existingVenue = existingVenueMap.get(lookupKey);
 
           if (existingVenue) {
-            // We have a venue from DB — upsert directly
             allEvents.push({
-              artist: artistClean,
+              artist: card.artist,
               venue: existingVenue,
-              date: ev.date,
-              image_url: ev.image_url || null,
-              event_type: cat.type,
+              date,
+              image_url: card.image_url,
+              event_type: page.type,
               source: "evently",
-              source_url: ev.detail_url || cat.url,
+              source_url: card.detail_url,
             });
           } else {
-            // Need venue enrichment — store for batch 2-5
             needsEnrichment.push({
-              artist: artistClean,
-              date: ev.date,
-              detail_url: ev.detail_url,
-              image_url: ev.image_url,
-              event_type: cat.type,
+              artist: card.artist,
+              date,
+              detail_url: card.detail_url,
+              image_url: card.image_url,
+              event_type: page.type,
             });
           }
         }
         await delay(2000);
       }
 
-      // Upsert events that already have venues
-      if (allEvents.length > 0) {
-        await upsertEvents(allEvents);
-      }
+      if (allEvents.length > 0) await upsertEvents(allEvents);
       totalScraped = allEvents.length + needsEnrichment.length;
 
-      // Store enrichment queue in scrape_log for batch 2-5 to pick up
+      // Store enrichment queue (only on batch 1, accumulate on 2-3)
       if (needsEnrichment.length > 0) {
         console.log(`${needsEnrichment.length} events need venue enrichment`);
-        const { error } = await supabase.from("scrape_log").insert({
-          batch: 1,
-          source: "evently-enrichment-queue",
+        await supabase.from("scrape_log").insert({
+          batch: targetBatch,
+          source: `evently-enrich-queue-${targetBatch}`,
           events_found: needsEnrichment.length,
           events_upserted: allEvents.length,
           duration_ms: Date.now() - START_TIME,
-          error: JSON.stringify(needsEnrichment), // store queue in error field (reuse)
+          error: JSON.stringify(needsEnrichment),
         });
-        if (error) console.error("Failed to store enrichment queue:", error.message);
       }
     }
 
-    // ==================== BATCH 2-5: ENRICH FROM DETAIL PAGES ====================
-    if (targetBatch >= 2 && targetBatch <= 5) {
-      // Load enrichment queue from batch 1 log
+    // ==================== BATCH 4-5: ENRICH VENUES FROM DETAIL PAGES ====================
+    if (targetBatch >= 4 && targetBatch <= 5) {
+      // Load all enrichment queues from batch 1-3
       const { data: logEntries } = await supabase
         .from("scrape_log")
         .select("error")
-        .eq("source", "evently-enrichment-queue")
+        .like("source", "evently-enrich-queue-%")
         .order("created_at", { ascending: false })
-        .limit(1);
+        .limit(3);
 
       let queue: any[] = [];
-      try {
-        queue = JSON.parse(logEntries?.[0]?.error || "[]");
-      } catch { queue = []; }
+      for (const entry of (logEntries || [])) {
+        try { queue.push(...JSON.parse(entry.error || "[]")); } catch {}
+      }
+      // Dedupe by detail_url
+      const seen = new Set<string>();
+      queue = queue.filter(item => { if (seen.has(item.detail_url)) return false; seen.add(item.detail_url); return true; });
 
-      const batchSize = 10;
-      const start = (targetBatch - 2) * batchSize;
+      const batchSize = 15;
+      const start = (targetBatch - 4) * batchSize;
       const slice = queue.slice(start, start + batchSize);
-      console.log(`Enriching ${slice.length} events (${start}-${start + slice.length} of ${queue.length})`);
+      console.log(`Enriching ${slice.length} events (offset ${start} of ${queue.length})`);
 
-      const enrichedEvents: ScrapedEvent[] = [];
+      const enriched: ScrapedEvent[] = [];
+      const unmappedAddresses: string[] = [];
+
       for (const item of slice) {
-        if (!hasTimeBudget()) break;
-        if (!item.detail_url) continue;
+        if (!hasTimeBudget() || !item.detail_url) continue;
+        console.log(`Enriching: ${item.artist}`);
 
-        console.log(`Enriching: ${item.artist} — ${item.detail_url}`);
-        const detail = await firecrawlScrape(
-          firecrawlKey,
-          item.detail_url,
-          eventlyDetailSchema,
-          "Extract the venue/location name (NOT 'Stockholm, Sweden'), full street address, ticket purchase URL, and whether tickets are available. If the venue name is not explicitly stated, derive it from the address or context.",
-          { waitFor: 5000 }
+        const detail = await firecrawlScrapeJson(
+          firecrawlKey, item.detail_url, detailSchema,
+          "Extract venue name (NOT 'Stockholm, Sweden'), street address, ticket URL, and ticket availability.",
+          5000
         );
 
         let venue: string | null = null;
         if (detail) {
-          // Try venue_name from extraction
-          if (detail.venue_name && !detail.venue_name.toLowerCase().includes("stockholm, sweden")) {
+          if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
             venue = normalizeVenueName(detail.venue_name);
           }
-          // Try address → known venue
           if (!venue && detail.address) {
             venue = resolveVenueFromAddress(detail.address);
           }
+          if (!venue && detail.address) {
+            unmappedAddresses.push(`${item.artist}: ${detail.address}`);
+          }
         }
 
-        if (venue && isStockholmVenue(venue)) {
-          enrichedEvents.push({
+        if (venue && !isInvalidVenue(venue)) {
+          enriched.push({
             artist: item.artist,
             venue,
             date: item.date,
@@ -529,19 +683,27 @@ Deno.serve(async (req) => {
             source_url: item.detail_url,
           });
         } else {
-          console.log(`Could not resolve venue for ${item.artist}: ${detail?.address || "no address"}`);
+          console.log(`No venue resolved for "${item.artist}"`);
         }
-
         await delay(1500);
       }
 
-      if (enrichedEvents.length > 0) {
-        await upsertEvents(enrichedEvents);
+      if (enriched.length > 0) await upsertEvents(enriched);
+      totalScraped = enriched.length;
+
+      // Log unmapped addresses for review
+      if (unmappedAddresses.length > 0) {
+        console.log(`UNMAPPED ADDRESSES:\n${unmappedAddresses.join("\n")}`);
+        await supabase.from("scrape_log").insert({
+          batch: targetBatch,
+          source: "unmapped-addresses",
+          events_found: unmappedAddresses.length,
+          error: JSON.stringify(unmappedAddresses),
+        });
       }
-      totalScraped = enrichedEvents.length;
     }
 
-    // ==================== BATCH 6-7: SECONDARY SOURCES (gap-fill) ====================
+    // ==================== BATCH 6: VENUE-SPECIFIC SOURCES ====================
     if (targetBatch === 6) {
       const sources = [
         { name: "Cirkus", url: "https://cirkus.se/sv/evenemang/", type: "concert" },
@@ -549,26 +711,21 @@ Deno.serve(async (req) => {
         { name: "Gröna Lund", url: "https://www.gronalund.com/en/concerts", type: "concert" },
         { name: "Stockholm Live", url: "https://stockholmlive.com/evenemang/", type: "concert" },
       ];
-
-      const prompt = "Extract ONLY music concerts. Get artist name (clean, no tour subtitle), venue name, date (ISO 8601), ticket URL, and whether tickets are on sale. Only Stockholm events. Current year is 2025/2026.";
-
+      const prompt = "Extract ONLY music concerts. Artist name (clean, no tour subtitle), venue, date (ISO 8601), ticket URL, ticket availability. Stockholm only. Year 2025/2026.";
       for (const src of sources) {
         if (!hasTimeBudget()) break;
         console.log(`Gap-fill: ${src.name}`);
-        const result = await firecrawlScrape(firecrawlKey, src.url, secondarySourceSchema, prompt, { waitFor: 8000 });
+        const result = await firecrawlScrapeJson(firecrawlKey, src.url, secondarySourceSchema, prompt, 8000);
         if (result?.events) {
           const events: ScrapedEvent[] = result.events
-            .filter((e: any) => e.artist && e.venue && e.date)
+            .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
               venue: normalizeVenueName(e.venue),
-              date: e.date,
-              ticket_url: e.ticket_url || null,
+              date: e.date, ticket_url: e.ticket_url || null,
               tickets_available: e.tickets_available ?? false,
               image_url: e.image_url || null,
-              event_type: src.type,
-              source: src.name,
-              source_url: src.url,
+              event_type: src.type, source: src.name, source_url: src.url,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
           console.log(`${src.name}: ${events.length} events`);
@@ -579,6 +736,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ==================== BATCH 7: AXS + KONSERTHUSET ====================
     if (targetBatch === 7) {
       const sources = [
         { name: "AXS Avicii Arena", url: "https://www.axs.com/se/venues/1702/avicii-arena", type: "concert" },
@@ -586,26 +744,19 @@ Deno.serve(async (req) => {
         { name: "AXS Strawberry Arena", url: "https://www.axs.com/se/venues/141684/strawberry-arena", type: "concert" },
         { name: "Konserthuset", url: "https://www.konserthuset.se/program-och-biljetter/kalender/", type: "concert" },
       ];
-
-      const prompt = "Extract ONLY music concerts/events. Get artist name (clean), venue name, date (ISO 8601), ticket URL, and whether tickets are on sale. Current year is 2025/2026.";
-
+      const prompt = "Extract music concerts/events. Artist name (clean), venue, date (ISO 8601), ticket URL, availability. Year 2025/2026.";
       for (const src of sources) {
         if (!hasTimeBudget()) break;
         console.log(`Gap-fill: ${src.name}`);
-        const result = await firecrawlScrape(firecrawlKey, src.url, secondarySourceSchema, prompt, { waitFor: 8000 });
+        const result = await firecrawlScrapeJson(firecrawlKey, src.url, secondarySourceSchema, prompt, 8000);
         if (result?.events) {
           const events: ScrapedEvent[] = result.events
-            .filter((e: any) => e.artist && e.venue && e.date)
+            .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue),
-              date: e.date,
-              ticket_url: e.ticket_url || null,
-              tickets_available: e.tickets_available ?? false,
-              image_url: e.image_url || null,
-              event_type: src.type,
-              source: src.name,
-              source_url: src.url,
+              venue: normalizeVenueName(e.venue), date: e.date,
+              ticket_url: e.ticket_url || null, tickets_available: e.tickets_available ?? false,
+              image_url: e.image_url || null, event_type: src.type, source: src.name, source_url: src.url,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
           console.log(`${src.name}: ${events.length} events`);
@@ -616,35 +767,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ==================== BATCH 8: TICKETMASTER + LIVE NATION (top pages only) ====================
+    // ==================== BATCH 8: TICKETMASTER + LIVE NATION ====================
     if (targetBatch === 8) {
       const sources = [
-        { name: "Ticketmaster p1", url: "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ", type: "concert" },
-        { name: "Ticketmaster p2", url: "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ&page=2", type: "concert" },
-        { name: "Live Nation p1", url: "https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=1", type: "concert" },
+        { name: "Ticketmaster", url: "https://www.ticketmaster.se/discover/stockholm?categoryId=KZFzniwnSyZfZ7v7nJ", type: "concert" },
+        { name: "Live Nation", url: "https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=1", type: "concert" },
         { name: "Live Nation p2", url: "https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=2", type: "concert" },
         { name: "Live Nation p3", url: "https://www.livenation.se/en?CityIds=65969&CountryIds=212&Page=3", type: "concert" },
       ];
-
-      const prompt = "Extract ONLY music concerts in Stockholm. Get artist name (clean, no tour name), venue name, date (ISO 8601), ticket URL, and ticket availability. Current year is 2025/2026. EXCLUDE non-Stockholm events.";
-
+      const prompt = "Extract ONLY music concerts in Stockholm. Artist name (clean, no tour name), venue, date (ISO 8601), ticket URL, availability. EXCLUDE non-Stockholm. Year 2025/2026.";
       for (const src of sources) {
         if (!hasTimeBudget()) break;
         console.log(`Gap-fill: ${src.name}`);
-        const result = await firecrawlScrape(firecrawlKey, src.url, secondarySourceSchema, prompt, { waitFor: 8000 });
+        const result = await firecrawlScrapeJson(firecrawlKey, src.url, secondarySourceSchema, prompt, 8000);
         if (result?.events) {
           const events: ScrapedEvent[] = result.events
-            .filter((e: any) => e.artist && e.venue && e.date)
+            .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue),
-              date: e.date,
-              ticket_url: e.ticket_url || null,
-              tickets_available: e.tickets_available ?? false,
+              venue: normalizeVenueName(e.venue), date: e.date,
+              ticket_url: e.ticket_url || null, tickets_available: e.tickets_available ?? false,
               image_url: e.image_url || null,
-              event_type: src.type,
-              source: src.name.split(" p")[0],
-              source_url: src.url,
+              event_type: src.type, source: src.name.split(" p")[0], source_url: src.url,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
           console.log(`${src.name}: ${events.length} events`);
@@ -661,26 +805,20 @@ Deno.serve(async (req) => {
         { name: "Nöjesteatern", url: "https://www.nojesteatern.se/program/", type: "comedy" },
         { name: "Hyvens", url: "https://www.hyvens.se/program/", type: "comedy" },
       ];
-
-      const prompt = "Extract ONLY stand-up comedy shows. Get performer name, venue name, date (ISO 8601), ticket URL, and ticket availability. Stockholm only. Current year is 2025/2026.";
-
+      const prompt = "Extract ONLY stand-up comedy shows. Performer name, venue, date (ISO 8601), ticket URL, availability. Stockholm only. Year 2025/2026.";
       for (const src of sources) {
         if (!hasTimeBudget()) break;
-        console.log(`Comedy gap-fill: ${src.name}`);
-        const result = await firecrawlScrape(firecrawlKey, src.url, secondarySourceSchema, prompt, { waitFor: 5000 });
+        console.log(`Comedy: ${src.name}`);
+        const result = await firecrawlScrapeJson(firecrawlKey, src.url, secondarySourceSchema, prompt, 5000);
         if (result?.events) {
           const events: ScrapedEvent[] = result.events
-            .filter((e: any) => e.artist && e.venue && e.date)
+            .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue),
-              date: e.date,
-              ticket_url: e.ticket_url || null,
-              tickets_available: e.tickets_available ?? false,
+              venue: normalizeVenueName(e.venue), date: e.date,
+              ticket_url: e.ticket_url || null, tickets_available: e.tickets_available ?? false,
               image_url: e.image_url || null,
-              event_type: "comedy",
-              source: src.name,
-              source_url: src.url,
+              event_type: "comedy", source: src.name, source_url: src.url,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
           console.log(`${src.name}: ${events.length} events`);
@@ -697,26 +835,20 @@ Deno.serve(async (req) => {
         { name: "Resident Advisor", url: "https://ra.co/events/se/stockholm", type: "concert" },
         { name: "All Things Live", url: "https://allthingslive.se/event?city=Stockholm", type: "concert" },
       ];
-
-      const prompt = "Extract music events/concerts in Stockholm. Get artist name, venue name, date (ISO 8601), ticket URL. Current year is 2025/2026. EXCLUDE non-Stockholm events.";
-
+      const prompt = "Extract music events/concerts in Stockholm. Artist name, venue, date (ISO 8601), ticket URL. Year 2025/2026. EXCLUDE non-Stockholm.";
       for (const src of sources) {
         if (!hasTimeBudget()) break;
         console.log(`Gap-fill: ${src.name}`);
-        const result = await firecrawlScrape(firecrawlKey, src.url, secondarySourceSchema, prompt, { waitFor: 10000 });
+        const result = await firecrawlScrapeJson(firecrawlKey, src.url, secondarySourceSchema, prompt, 10000);
         if (result?.events) {
           const events: ScrapedEvent[] = result.events
-            .filter((e: any) => e.artist && e.venue && e.date)
+            .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue),
-              date: e.date,
-              ticket_url: e.ticket_url || null,
-              tickets_available: e.tickets_available ?? false,
+              venue: normalizeVenueName(e.venue), date: e.date,
+              ticket_url: e.ticket_url || null, tickets_available: e.tickets_available ?? false,
               image_url: e.image_url || null,
-              event_type: src.type,
-              source: src.name,
-              source_url: src.url,
+              event_type: src.type, source: src.name, source_url: src.url,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
           console.log(`${src.name}: ${events.length} events`);
@@ -727,26 +859,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Log batch
+    // Log this batch
+    const elapsed = Math.round((Date.now() - START_TIME) / 1000);
     await supabase.from("scrape_log").insert({
       batch: targetBatch,
-      source: targetBatch === 1 ? "evently" : `secondary-batch-${targetBatch}`,
+      source: targetBatch <= 3 ? "evently" : `secondary-${targetBatch}`,
       events_found: totalScraped,
       events_upserted: totalUpserted,
       duration_ms: Date.now() - START_TIME,
     });
 
-    // Chain
     if (chain) await triggerNextBatch(targetBatch, supabase);
 
-    const elapsed = Math.round((Date.now() - START_TIME) / 1000);
+    console.log(`Batch ${targetBatch} done: ${totalScraped} scraped, ${totalUpserted} upserted in ${elapsed}s`);
     return new Response(
       JSON.stringify({
         success: true,
         message: `Batch ${targetBatch}/${TOTAL_BATCHES}: ${totalScraped} scraped, ${totalUpserted} upserted in ${elapsed}s`,
-        batch: targetBatch,
-        totalBatches: TOTAL_BATCHES,
-        chain,
+        batch: targetBatch, totalBatches: TOTAL_BATCHES, chain,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
