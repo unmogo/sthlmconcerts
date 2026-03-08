@@ -401,7 +401,7 @@ Deno.serve(async (req) => {
     // Load existing concerts for venue matching
     const { data: existingConcerts } = await supabase
       .from("concerts")
-      .select("artist, venue, date")
+      .select("id, artist, venue, date")
       .gte("date", new Date().toISOString());
 
     const existingVenueMap = new Map<string, string>();
