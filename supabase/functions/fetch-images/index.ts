@@ -119,12 +119,7 @@ async function lookupFallbackImage(artist: string): Promise<string | null> {
       const imageName = wdData?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
       if (imageName) {
         const filename = encodeURIComponent(imageName.replace(/ /g, "_"));
-        const hashInput = imageName.replace(/ /g, "_");
-        // Use SHA-256 to compute a simple hash for Wikimedia path
-        const encoder = new TextEncoder();
-        const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(hashInput));
-        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-        return `https://upload.wikimedia.org/wikipedia/commons/thumb/${hashHex[0]}/${hashHex.slice(0, 2)}/${filename}/500px-${filename}`;
+        return `https://commons.wikimedia.org/wiki/Special:FilePath/${filename}?width=500`;
       }
     }
 
