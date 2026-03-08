@@ -201,7 +201,7 @@ function isInvalidVenue(venue: string): boolean {
 
 async function firecrawlMap(apiKey: string, url: string, search?: string): Promise<string[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const response = await fetch("https://api.firecrawl.dev/v1/map", {
       method: "POST",
