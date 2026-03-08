@@ -154,6 +154,14 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
               </button>
 
               <button
+                onClick={() => setShowLogs(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
+              >
+                <Activity className="h-4 w-4" />
+                Logs
+              </button>
+
+              <button
                 onClick={handleScrape}
                 disabled={scraping}
                 className="inline-flex items-center gap-2 rounded-lg bg-gradient-neon px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
