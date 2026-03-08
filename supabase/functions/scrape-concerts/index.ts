@@ -376,9 +376,13 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let targetBatch = 1;
+  let chain = false;
+  let totalScraped = 0;
+  let totalUpserted = 0;
+  let supabase: any = null;
+
   try {
-    let targetBatch = 1;
-    let chain = false;
     try {
       const body = await req.json();
       if (body?.batch) targetBatch = Number(body.batch);
@@ -391,7 +395,7 @@ Deno.serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // Load deleted concerts
     const { data: deletedConcerts } = await supabase.from("deleted_concerts").select("artist, venue, date");
