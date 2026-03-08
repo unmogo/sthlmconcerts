@@ -1160,19 +1160,21 @@ Deno.serve(async (req) => {
 
     // CRITICAL: Always chain to next batch even on error so pipeline doesn't break
     try {
-      if (chain) {
+      if (chain && supabase) {
         console.log(`Error recovery: chaining to batch ${targetBatch + 1} despite error`);
         await triggerNextBatch(targetBatch, supabase);
       }
       // Log the failed batch
-      await supabase.from("scrape_log").insert({
-        batch: targetBatch,
-        source: targetBatch <= 3 ? "evently-listing" : targetBatch <= 5 ? "evently-detail" : `secondary-${targetBatch}`,
-        events_found: totalScraped,
-        events_upserted: totalUpserted,
-        duration_ms: Date.now() - START_TIME,
-        error: String(err.message || err).slice(0, 500),
-      });
+      if (supabase) {
+        await supabase.from("scrape_log").insert({
+          batch: targetBatch,
+          source: targetBatch <= 3 ? "evently-listing" : targetBatch <= 5 ? "evently-detail" : `secondary-${targetBatch}`,
+          events_found: totalScraped,
+          events_upserted: totalUpserted,
+          duration_ms: Date.now() - START_TIME,
+          error: String(err.message || err).slice(0, 500),
+        });
+      }
     } catch (chainErr) {
       console.error("Failed to chain/log after error:", chainErr);
     }
