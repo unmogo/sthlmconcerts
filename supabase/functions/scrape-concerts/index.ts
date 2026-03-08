@@ -490,47 +490,69 @@ Deno.serve(async (req) => {
 
     console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chain}) ===`);
 
-    // ==================== BATCH 1: EVENTLY MAP — discover all event URLs ====================
+    // ==================== BATCH 1: EVENTLY DISCOVERY — broad URL discovery (map + deep page fallback) ====================
     if (targetBatch === 1) {
-      console.log("Mapping evently.se for all event URLs...");
-      const allUrls = await firecrawlMap(firecrawlKey, "https://evently.se/en/place/se/stockholm", "events");
-      
-      // Filter to only event detail pages
-      const eventUrls = allUrls.filter(url => /\/en\/events\/[^/]+\/\d{6}-\d{4}$/.test(url));
-      console.log(`Found ${eventUrls.length} event URLs out of ${allUrls.length} total`);
+      console.log("Discovering Evently event URLs...");
 
-      // Parse date from each URL and filter to future events
-      const now = new Date();
-      const futureUrls: string[] = [];
-      for (const url of eventUrls) {
-        const date = parseDateFromUrl(url);
-        if (date && new Date(date) > now) {
-          futureUrls.push(url);
+      const discoverySeeds = [
+        "https://evently.se/en/place/se/stockholm",
+        "https://evently.se/en/place/se/stockholm?categories=music&page=1",
+        "https://evently.se/en/place/se/stockholm?categories=music&page=60",
+        "https://evently.se",
+      ];
+
+      const discoveredUrlSet = new Set<string>();
+
+      for (const seed of discoverySeeds) {
+        if (!hasTimeBudget()) break;
+        const mapped = await firecrawlMap(firecrawlKey, seed, "/en/events/");
+        for (const url of mapped) {
+          if (/\/en\/events\/[^/]+\/\d{6}-\d{4}$/.test(url)) {
+            discoveredUrlSet.add(url.split("?")[0]);
+          }
+        }
+        await delay(500);
+      }
+
+      // If map returns too little (or misses deep pagination), scrape strategic pages directly.
+      if (discoveredUrlSet.size < 30) {
+        const fallbackPages = [1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80];
+        for (const page of fallbackPages) {
+          if (!hasTimeBudget()) break;
+          const pageUrl = `https://evently.se/en/place/se/stockholm?categories=music&page=${page}`;
+          const markdown = await firecrawlScrapeMarkdown(firecrawlKey, pageUrl, 7000);
+          if (!markdown) continue;
+
+          const links = extractEventlyDetailUrls(markdown);
+          for (const url of links) discoveredUrlSet.add(url);
+          await delay(700);
         }
       }
-      console.log(`${futureUrls.length} future event URLs`);
 
-      // Check which are already in DB (by matching artist slug + date)
+      const eventUrls = Array.from(discoveredUrlSet);
+      console.log(`Discovered ${eventUrls.length} Evently detail URLs`);
+
+      // Parse date and keep future URLs only.
+      const now = new Date();
+      const futureUrls = eventUrls.filter((url) => {
+        const parsed = parseDateFromUrl(url);
+        return parsed ? new Date(parsed) > now : false;
+      });
+
       const newUrls: string[] = [];
-      const resolvedFromDb: ScrapedEvent[] = [];
-      
       for (const url of futureUrls) {
-        const date = parseDateFromUrl(url)!;
+        const date = parseDateFromUrl(url);
+        if (!date) continue;
+
         const artistSlug = parseArtistFromUrl(url) || "";
         const dayKey = `${normalize(artistSlug)}|${dateOnly(date)}`;
-        
-        // Check if we already have this artist+date with a valid venue
+
         const existingVenue = existingVenueMap.get(dayKey);
-        if (existingVenue) {
-          // Already in DB with valid venue, skip
-          continue;
-        }
-        newUrls.push(url);
+        if (!existingVenue) newUrls.push(url);
       }
 
-      console.log(`${newUrls.length} new URLs need scraping`);
+      console.log(`${futureUrls.length} future Evently URLs, ${newUrls.length} need scraping`);
 
-      // Store all new URLs in scrape_log for batch 2-3 to process
       if (newUrls.length > 0) {
         await supabase.from("scrape_log").insert({
           batch: 1,
