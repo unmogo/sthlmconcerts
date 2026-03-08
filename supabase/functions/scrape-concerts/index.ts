@@ -564,8 +564,8 @@ Deno.serve(async (req) => {
         if (!hasTimeBudget()) break;
         console.log(`Scraping evently ${page.type} page...`);
         
-        const markdown = await firecrawlScrapeMarkdown(firecrawlKey, page.url, 8000);
-        if (!markdown) { console.log(`No markdown from ${page.url}`); continue; }
+        // Use 15 scrolls to load ~150+ events from infinite scroll
+        const markdown = await firecrawlScrapeMarkdown(firecrawlKey, page.url, 5000, 15);
 
         const cards = parseEventlyMarkdown(markdown);
         console.log(`Parsed ${cards.length} cards from evently ${page.type}`);
