@@ -1,0 +1,1 @@
+UPDATE concerts SET image_url = NULL WHERE image_url LIKE '%evently.se/api/file%'
