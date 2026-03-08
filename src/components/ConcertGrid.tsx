@@ -61,7 +61,7 @@ function groupConcerts(concerts: Concert[]): { primary: Concert; extras: Concert
   const groups: Map<string, Concert[]> = new Map();
 
   for (const c of deduped) {
-    const key = `${normalizeForGroup(c.artist)}|${c.venue.toLowerCase().trim()}`;
+    const key = `${normalizeForGroup(c.artist)}|${normalizeVenueName(c.venue).toLowerCase().trim()}`;
     if (!groups.has(key)) {
       groups.set(key, []);
     }
