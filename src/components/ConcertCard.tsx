@@ -17,6 +17,7 @@ interface ConcertCardProps {
 
 export function ConcertCard({ concert, extraDates = [], index, selected, onToggleSelect }: ConcertCardProps) {
   const [showEdit, setShowEdit] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const { user, isAdmin } = useAuth();
   const { favoriteIds, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
