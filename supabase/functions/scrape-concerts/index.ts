@@ -815,36 +815,113 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ==================== BATCH 9: COMEDY + RA ====================
+    // ==================== BATCH 9: COMEDY + RESIDENT ADVISOR ====================
     if (targetBatch === 9) {
       const sources = [
         { name: "Nöjesteatern", url: "https://www.nojesteatern.se/program/", type: "comedy" },
         { name: "Hyvens", url: "https://www.hyvens.se/program/", type: "comedy" },
         { name: "Resident Advisor", url: "https://ra.co/events/se/stockholm", type: "concert" },
       ];
-      
+
+      const residentAdvisorDetailSchema = {
+        type: "object",
+        properties: {
+          artist: { type: "string", description: "Main artist/DJ/event title" },
+          venue: { type: "string", description: "Venue name" },
+          date: { type: "string", description: "ISO 8601 datetime" },
+          ticket_url: { type: "string", description: "Ticket purchase URL" },
+          image_url: { type: "string", description: "Event image URL" },
+        },
+        required: ["artist", "venue", "date"],
+      };
+
       for (const src of sources) {
         if (!hasTimeBudget()) break;
         console.log(`Gap-fill: ${src.name}`);
-        const prompt = src.type === "comedy" 
-          ? "Extract stand-up comedy shows. Performer name, venue, date (ISO 8601, 2026), ticket URL, availability. Stockholm only."
-          : "Extract music events/DJ nights in Stockholm. Artist name, venue, date (ISO 8601, 2026), ticket URL. EXCLUDE non-Stockholm.";
+
+        if (src.name === "Resident Advisor") {
+          const mapped = await firecrawlMap(firecrawlKey, src.url, "/events/");
+          const detailUrls = Array.from(new Set(
+            mapped
+              .map((u) => u.split("?")[0])
+              .filter((u) => /^https:\/\/ra\.co\/events\/\d+$/.test(u))
+          ));
+
+          console.log(`Resident Advisor mapped ${detailUrls.length} detail URLs`);
+          const events: ScrapedEvent[] = [];
+
+          for (const detailUrl of detailUrls.slice(0, 120)) {
+            if (!hasTimeBudget()) break;
+
+            const detail = await firecrawlScrapeJson(
+              firecrawlKey,
+              detailUrl,
+              residentAdvisorDetailSchema,
+              "Extract this single event: artist, venue, date (ISO 8601), ticket URL, image URL. Use only explicit page content; do not guess.",
+              7000,
+            );
+
+            if (!detail?.artist || !detail?.venue || !detail?.date) {
+              await delay(600);
+              continue;
+            }
+
+            const parsedDate = new Date(detail.date);
+            if (Number.isNaN(parsedDate.getTime())) {
+              await delay(600);
+              continue;
+            }
+
+            const normalizedVenue = normalizeVenueName(detail.venue);
+            if (!isInvalidVenue(normalizedVenue) && isStockholmVenue(normalizedVenue)) {
+              events.push({
+                artist: String(detail.artist).split(/[:\-–—|]/)[0].trim(),
+                venue: normalizedVenue,
+                date: parsedDate.toISOString(),
+                ticket_url: detail.ticket_url || detailUrl,
+                tickets_available: true,
+                image_url: isValidImageUrl(detail.image_url) ? detail.image_url : null,
+                event_type: "concert",
+                source: src.name,
+                source_url: detailUrl,
+              });
+            }
+
+            await delay(700);
+          }
+
+          console.log(`Resident Advisor: ${events.length} events`);
+          if (events.length > 0) await upsertEvents(events);
+          totalScraped += events.length;
+          continue;
+        }
+
+        const prompt = src.type === "comedy"
+          ? "Extract stand-up comedy shows. Performer name, venue, date (ISO 8601), ticket URL, availability. Stockholm only."
+          : "Extract music events/DJ nights in Stockholm. Artist name, venue, date (ISO 8601), ticket URL. EXCLUDE non-Stockholm.";
+
         const result = await firecrawlScrapeJson(firecrawlKey, src.url, secondarySourceSchema, prompt, 10000);
         if (result?.events) {
           const events: ScrapedEvent[] = result.events
             .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue), date: e.date,
-              ticket_url: e.ticket_url || null, tickets_available: e.tickets_available ?? false,
-              image_url: e.image_url || null,
-              event_type: src.type, source: src.name, source_url: src.url,
+              venue: normalizeVenueName(e.venue),
+              date: e.date,
+              ticket_url: e.ticket_url || null,
+              tickets_available: e.tickets_available ?? false,
+              image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
+              event_type: src.type,
+              source: src.name,
+              source_url: src.url,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
+
           console.log(`${src.name}: ${events.length} events`);
           if (events.length > 0) await upsertEvents(events);
           totalScraped += events.length;
         }
+
         await delay(2000);
       }
     }
