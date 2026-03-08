@@ -420,8 +420,8 @@ Deno.serve(async (req) => {
     }
     console.log(`Loaded ${existingVenueMap.size} existing venues, ${deletedKeys.size} deleted keys`);
 
-    let totalUpserted = 0;
-    let totalScraped = 0;
+    totalUpserted = 0;
+    totalScraped = 0;
 
     // Pre-build a map of existing concerts by normalized key for fast dedup
     const existingById = new Map<string, { id: string; artist: string; venue: string }>();
