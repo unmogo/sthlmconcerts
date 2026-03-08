@@ -40,12 +40,13 @@ const normalizeVenueName = (venue: string): string => {
   return VENUE_ALIASES[lower] || venue;
 };
 
-// Deduplicate concerts: same normalized artist + venue + exact date → keep one (shortest name)
+// Deduplicate concerts: same normalized artist + venue + same calendar date → keep one (prefer earliest time, shortest name)
 function deduplicateConcerts(concerts: Concert[]): Concert[] {
   const seen = new Map<string, Concert>();
   for (const c of concerts) {
-    const dateKey = new Date(c.date).toISOString();
-    const key = `${normalizeForGroup(c.artist)}|${c.venue.toLowerCase().trim()}|${dateKey}`;
+    // Use date-only key so 18:15, 19:00, 19:30 on same day collapse to one
+    const dateKey = new Date(c.date).toISOString().split("T")[0];
+    const key = `${normalizeForGroup(c.artist)}|${normalizeVenueName(c.venue).toLowerCase().trim()}|${dateKey}`;
     const existing = seen.get(key);
     if (!existing || c.artist.length < existing.artist.length) {
       seen.set(key, c);
