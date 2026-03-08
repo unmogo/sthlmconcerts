@@ -385,22 +385,50 @@ Deno.serve(async (req) => {
         const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
         if (deletedKeys.has(key)) continue;
 
-        // Use raw SQL upsert to match the unique index on lower(trim(artist)), lower(trim(venue)), date_only(date)
-        const { error } = await supabase.from("concerts").upsert({
-          artist: e.artist.trim(),
-          venue: e.venue.trim(),
-          date: e.date,
-          ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
-          ticket_sale_date: e.ticket_sale_date || null,
-          tickets_available: e.tickets_available ?? false,
-          image_url: e.image_url || null,
-          event_type: e.event_type,
-          source: e.source,
-          source_url: e.source_url,
-        }, { onConflict: "artist,venue,date", ignoreDuplicates: true });
+        // Check if already exists (expression-based unique index)
+        const { data: existing } = await supabase
+          .from("concerts")
+          .select("id")
+          .ilike("artist", e.artist.trim())
+          .ilike("venue", e.venue.trim())
+          .gte("date", dateOnly(e.date) + "T00:00:00Z")
+          .lt("date", dateOnly(e.date) + "T23:59:59Z")
+          .limit(1);
 
-        if (error) console.error(`Upsert error for "${e.artist}":`, error.message);
-        else count++;
+        if (existing && existing.length > 0) {
+          // Update existing record
+          const { error } = await supabase.from("concerts").update({
+            ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
+            tickets_available: e.tickets_available ?? false,
+            image_url: e.image_url || null,
+            source: e.source,
+            source_url: e.source_url,
+          }).eq("id", existing[0].id);
+          if (!error) count++;
+        } else {
+          // Insert new
+          const { error } = await supabase.from("concerts").insert({
+            artist: e.artist.trim(),
+            venue: e.venue.trim(),
+            date: e.date,
+            ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
+            ticket_sale_date: e.ticket_sale_date || null,
+            tickets_available: e.tickets_available ?? false,
+            image_url: e.image_url || null,
+            event_type: e.event_type,
+            source: e.source,
+            source_url: e.source_url,
+          });
+          if (error) {
+            if (error.message?.includes("duplicate key")) {
+              // Silently skip duplicates
+            } else {
+              console.error(`Insert error for "${e.artist}":`, error.message);
+            }
+          } else {
+            count++;
+          }
+        }
       }
       totalUpserted += count;
       console.log(`Upserted ${count}/${events.length}`);
