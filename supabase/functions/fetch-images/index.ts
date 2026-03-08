@@ -43,6 +43,20 @@ async function getSpotifyToken(): Promise<string | null> {
   }
 }
 
+function isBadImageUrl(url: string | null | undefined): boolean {
+  if (!url) return true;
+  const lower = url.toLowerCase();
+
+  return (
+    lower.includes("example.com") ||
+    lower.includes("widget-launcher.imbox.io") ||
+    lower.includes("konserthuset.se/globalassets") ||
+    lower.includes("localhost") ||
+    lower.includes("lovable.app") ||
+    lower.includes("id-preview--")
+  );
+}
+
 // ==================== SPOTIFY IMAGE LOOKUP ====================
 
 async function lookupSpotifyImage(artist: string): Promise<string | null> {
@@ -105,12 +119,7 @@ async function lookupFallbackImage(artist: string): Promise<string | null> {
       const imageName = wdData?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
       if (imageName) {
         const filename = encodeURIComponent(imageName.replace(/ /g, "_"));
-        const hashInput = imageName.replace(/ /g, "_");
-        // Use SHA-256 to compute a simple hash for Wikimedia path
-        const encoder = new TextEncoder();
-        const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(hashInput));
-        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-        return `https://upload.wikimedia.org/wikipedia/commons/thumb/${hashHex[0]}/${hashHex.slice(0, 2)}/${filename}/500px-${filename}`;
+        return `https://commons.wikimedia.org/wiki/Special:FilePath/${filename}?width=500`;
       }
     }
 
@@ -142,9 +151,9 @@ Deno.serve(async (req) => {
 
     const { data: concerts, error } = await supabase
       .from("concerts")
-      .select("id, artist, event_type")
+      .select("id, artist, event_type, image_url")
       .gte("date", new Date().toISOString())
-      .is("image_url", null)
+      .or("image_url.is.null,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%")
       .order("date", { ascending: true });
 
     if (error) throw error;
@@ -155,7 +164,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Found ${concerts.length} concerts with missing images`);
+    console.log(`Found ${concerts.length} concerts with missing or invalid images`);
 
     const artistCache = new Map<string, string | null>();
     let updated = 0;
@@ -170,16 +179,16 @@ Deno.serve(async (req) => {
       if (artistCache.has(cacheKey)) {
         imageUrl = artistCache.get(cacheKey)!;
       } else {
-        // Try Spotify first
         imageUrl = await lookupSpotifyImage(concert.artist);
         if (imageUrl) {
           spotifyHits++;
         } else {
-          // Fallback to MusicBrainz chain
           if (artistCache.size > 0) await delay(1200);
           imageUrl = await lookupFallbackImage(concert.artist);
           if (imageUrl) fallbackHits++;
         }
+
+        if (isBadImageUrl(imageUrl)) imageUrl = null;
         artistCache.set(cacheKey, imageUrl);
       }
 
@@ -195,12 +204,23 @@ Deno.serve(async (req) => {
         } else {
           updated++;
         }
+      } else if (isBadImageUrl(concert.image_url)) {
+        // Clear bad URLs so future runs can retry cleanly.
+        const { error: clearError } = await supabase
+          .from("concerts")
+          .update({ image_url: null })
+          .eq("id", concert.id);
+
+        if (clearError) {
+          console.error(`Failed to clear bad image for ${concert.artist}:`, clearError.message);
+          failed++;
+        }
       } else {
         failed++;
       }
     }
 
-    const message = `Updated ${updated} images (Spotify: ${spotifyHits}, fallback: ${fallbackHits}), ${failed} not found, out of ${concerts.length} missing`;
+    const message = `Updated ${updated} images (Spotify: ${spotifyHits}, fallback: ${fallbackHits}), ${failed} unresolved, out of ${concerts.length} needing fix`;
     console.log(message);
 
     return new Response(

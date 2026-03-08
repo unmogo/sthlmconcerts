@@ -156,6 +156,40 @@ function isValidTicketUrl(url: string | undefined | null): boolean {
   try { new URL(url); return true; } catch { return false; }
 }
 
+function isValidImageUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+
+  if (lower.includes("example.com") || lower.includes("test.com")) return false;
+  if (lower.includes("id-preview--") || lower.includes("lovable.app") || lower.includes("lovableproject.com")) return false;
+  if (lower.includes("localhost") || lower.includes("127.0.0.1")) return false;
+  if (lower.includes("widget-launcher.imbox.io")) return false;
+  if (lower.includes("konserthuset.se/globalassets")) return false;
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function extractEventlyDetailUrls(markdown: string): string[] {
+  const urls = new Set<string>();
+
+  const absoluteMatches = markdown.match(/https?:\/\/evently\.se\/en\/events\/[^\s)\]\"]+\/\d{6}-\d{4}/g) || [];
+  for (const match of absoluteMatches) {
+    urls.add(match.split("?")[0]);
+  }
+
+  const relativeMatches = markdown.match(/\/en\/events\/[^\s)\]\"]+\/\d{6}-\d{4}/g) || [];
+  for (const match of relativeMatches) {
+    urls.add(`https://evently.se${match.split("?")[0]}`);
+  }
+
+  return Array.from(urls);
+}
+
 function isInvalidVenue(venue: string): boolean {
   const lower = venue.toLowerCase().trim();
   return ["stockholm", "stockholm, sweden", "sweden", "sverige", "", "n/a", 
@@ -167,7 +201,7 @@ function isInvalidVenue(venue: string): boolean {
 
 async function firecrawlMap(apiKey: string, url: string, search?: string): Promise<string[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const response = await fetch("https://api.firecrawl.dev/v1/map", {
       method: "POST",
@@ -372,111 +406,153 @@ Deno.serve(async (req) => {
 
     async function upsertEvents(events: ScrapedEvent[]) {
       let count = 0;
+
       for (const e of events) {
-        // Normalize venue
         e.venue = normalizeVenueName(e.venue);
-        
+
         if (isInvalidVenue(e.venue)) continue;
         if (!isStockholmVenue(e.venue)) {
           console.log(`Rejected non-Stockholm venue: "${e.venue}" for "${e.artist}"`);
           continue;
         }
-        
+
         const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
         if (deletedKeys.has(key)) continue;
 
-        // Check if already exists (expression-based unique index)
-        const { data: existing } = await supabase
-          .from("concerts")
-          .select("id")
-          .ilike("artist", e.artist.trim())
-          .ilike("venue", e.venue.trim())
-          .gte("date", dateOnly(e.date) + "T00:00:00Z")
-          .lt("date", dateOnly(e.date) + "T23:59:59Z")
-          .limit(1);
+        const dayStart = `${dateOnly(e.date)}T00:00:00Z`;
+        const dayEnd = `${dateOnly(e.date)}T23:59:59Z`;
 
-        if (existing && existing.length > 0) {
-          // Update existing record
-          const { error } = await supabase.from("concerts").update({
-            ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
-            tickets_available: e.tickets_available ?? false,
-            image_url: e.image_url || null,
-            source: e.source,
-            source_url: e.source_url,
-          }).eq("id", existing[0].id);
-          if (!error) count++;
-        } else {
-          // Insert new
-          const { error } = await supabase.from("concerts").insert({
-            artist: e.artist.trim(),
-            venue: e.venue.trim(),
-            date: e.date,
-            ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
-            ticket_sale_date: e.ticket_sale_date || null,
-            tickets_available: e.tickets_available ?? false,
-            image_url: e.image_url || null,
-            event_type: e.event_type,
-            source: e.source,
-            source_url: e.source_url,
-          });
-          if (error) {
-            if (error.message?.includes("duplicate key")) {
-              // Silently skip duplicates
-            } else {
-              console.error(`Insert error for "${e.artist}":`, error.message);
-            }
-          } else {
-            count++;
+        let existingId: string | null = null;
+        const { data: sameDayCandidates } = await supabase
+          .from("concerts")
+          .select("id, artist, venue")
+          .gte("date", dayStart)
+          .lt("date", dayEnd)
+          .limit(100);
+
+        const normalizedArtist = normalizeArtist(e.artist);
+        const normalizedVenue = normalizeVenueKey(e.venue);
+        const match = (sameDayCandidates || []).find((c: any) =>
+          normalizeArtist(c.artist) === normalizedArtist && normalizeVenueKey(c.venue) === normalizedVenue
+        );
+
+        if (match?.id) {
+          existingId = match.id;
+        }
+
+        if (existingId || existingKeys.has(key)) {
+          if (!existingId) {
+            // Key already known locally; skip noisy duplicate writes.
+            continue;
           }
+
+          const { error } = await supabase
+            .from("concerts")
+            .update({
+              ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
+              tickets_available: e.tickets_available ?? false,
+              image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
+              source: e.source,
+              source_url: e.source_url,
+            })
+            .eq("id", existingId);
+
+          if (!error) count++;
+          continue;
+        }
+
+        const { error } = await supabase.from("concerts").insert({
+          artist: e.artist.trim(),
+          venue: e.venue.trim(),
+          date: e.date,
+          ticket_url: isValidTicketUrl(e.ticket_url) ? e.ticket_url : null,
+          ticket_sale_date: e.ticket_sale_date || null,
+          tickets_available: e.tickets_available ?? false,
+          image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
+          event_type: e.event_type,
+          source: e.source,
+          source_url: e.source_url,
+        });
+
+        if (error) {
+          if (!error.message?.includes("duplicate key")) {
+            console.error(`Insert error for "${e.artist}":`, error.message);
+          }
+        } else {
+          count++;
+          existingKeys.add(key);
         }
       }
+
       totalUpserted += count;
       console.log(`Upserted ${count}/${events.length}`);
     }
 
     console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chain}) ===`);
 
-    // ==================== BATCH 1: EVENTLY MAP — discover all event URLs ====================
+    // ==================== BATCH 1: EVENTLY DISCOVERY — broad URL discovery (map + deep page fallback) ====================
     if (targetBatch === 1) {
-      console.log("Mapping evently.se for all event URLs...");
-      const allUrls = await firecrawlMap(firecrawlKey, "https://evently.se/en/place/se/stockholm", "events");
-      
-      // Filter to only event detail pages
-      const eventUrls = allUrls.filter(url => /\/en\/events\/[^/]+\/\d{6}-\d{4}$/.test(url));
-      console.log(`Found ${eventUrls.length} event URLs out of ${allUrls.length} total`);
+      console.log("Discovering Evently event URLs...");
 
-      // Parse date from each URL and filter to future events
-      const now = new Date();
-      const futureUrls: string[] = [];
-      for (const url of eventUrls) {
-        const date = parseDateFromUrl(url);
-        if (date && new Date(date) > now) {
-          futureUrls.push(url);
+      const discoverySeeds = [
+        "https://evently.se/en/place/se/stockholm",
+        "https://evently.se/en/place/se/stockholm?categories=music&page=1",
+        "https://evently.se/en/place/se/stockholm?categories=music&page=30",
+        "https://evently.se/en/place/se/stockholm?categories=music&page=60",
+      ];
+
+      const discoveredUrlSet = new Set<string>();
+
+      for (const seed of discoverySeeds) {
+        if (!hasTimeBudget()) break;
+        const mapped = await firecrawlMap(firecrawlKey, seed, "/en/events/");
+        for (const url of mapped) {
+          if (/\/en\/events\/[^/]+\/\d{6}-\d{4}$/.test(url)) {
+            discoveredUrlSet.add(url.split("?")[0]);
+          }
+        }
+        await delay(500);
+      }
+
+      // If map returns too little (or misses deep pagination), scrape strategic pages directly.
+      if (discoveredUrlSet.size < 30) {
+        const fallbackPages = [1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80];
+        for (const page of fallbackPages) {
+          if (!hasTimeBudget()) break;
+          const pageUrl = `https://evently.se/en/place/se/stockholm?categories=music&page=${page}`;
+          const markdown = await firecrawlScrapeMarkdown(firecrawlKey, pageUrl, 7000);
+          if (!markdown) continue;
+
+          const links = extractEventlyDetailUrls(markdown);
+          for (const url of links) discoveredUrlSet.add(url);
+          await delay(700);
         }
       }
-      console.log(`${futureUrls.length} future event URLs`);
 
-      // Check which are already in DB (by matching artist slug + date)
+      const eventUrls = Array.from(discoveredUrlSet);
+      console.log(`Discovered ${eventUrls.length} Evently detail URLs`);
+
+      // Parse date and keep future URLs only.
+      const now = new Date();
+      const futureUrls = eventUrls.filter((url) => {
+        const parsed = parseDateFromUrl(url);
+        return parsed ? new Date(parsed) > now : false;
+      });
+
       const newUrls: string[] = [];
-      const resolvedFromDb: ScrapedEvent[] = [];
-      
       for (const url of futureUrls) {
-        const date = parseDateFromUrl(url)!;
+        const date = parseDateFromUrl(url);
+        if (!date) continue;
+
         const artistSlug = parseArtistFromUrl(url) || "";
         const dayKey = `${normalize(artistSlug)}|${dateOnly(date)}`;
-        
-        // Check if we already have this artist+date with a valid venue
+
         const existingVenue = existingVenueMap.get(dayKey);
-        if (existingVenue) {
-          // Already in DB with valid venue, skip
-          continue;
-        }
-        newUrls.push(url);
+        if (!existingVenue) newUrls.push(url);
       }
 
-      console.log(`${newUrls.length} new URLs need scraping`);
+      console.log(`${futureUrls.length} future Evently URLs, ${newUrls.length} need scraping`);
 
-      // Store all new URLs in scrape_log for batch 2-3 to process
       if (newUrls.length > 0) {
         await supabase.from("scrape_log").insert({
           batch: 1,
@@ -739,36 +815,113 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ==================== BATCH 9: COMEDY + RA ====================
+    // ==================== BATCH 9: COMEDY + RESIDENT ADVISOR ====================
     if (targetBatch === 9) {
       const sources = [
         { name: "Nöjesteatern", url: "https://www.nojesteatern.se/program/", type: "comedy" },
         { name: "Hyvens", url: "https://www.hyvens.se/program/", type: "comedy" },
         { name: "Resident Advisor", url: "https://ra.co/events/se/stockholm", type: "concert" },
       ];
-      
+
+      const residentAdvisorDetailSchema = {
+        type: "object",
+        properties: {
+          artist: { type: "string", description: "Main artist/DJ/event title" },
+          venue: { type: "string", description: "Venue name" },
+          date: { type: "string", description: "ISO 8601 datetime" },
+          ticket_url: { type: "string", description: "Ticket purchase URL" },
+          image_url: { type: "string", description: "Event image URL" },
+        },
+        required: ["artist", "venue", "date"],
+      };
+
       for (const src of sources) {
         if (!hasTimeBudget()) break;
         console.log(`Gap-fill: ${src.name}`);
-        const prompt = src.type === "comedy" 
-          ? "Extract stand-up comedy shows. Performer name, venue, date (ISO 8601, 2026), ticket URL, availability. Stockholm only."
-          : "Extract music events/DJ nights in Stockholm. Artist name, venue, date (ISO 8601, 2026), ticket URL. EXCLUDE non-Stockholm.";
+
+        if (src.name === "Resident Advisor") {
+          const mapped = await firecrawlMap(firecrawlKey, src.url, "/events/");
+          const detailUrls = Array.from(new Set(
+            mapped
+              .map((u) => u.split("?")[0])
+              .filter((u) => /^https:\/\/ra\.co\/events\/\d+$/.test(u))
+          ));
+
+          console.log(`Resident Advisor mapped ${detailUrls.length} detail URLs`);
+          const events: ScrapedEvent[] = [];
+
+          for (const detailUrl of detailUrls.slice(0, 120)) {
+            if (!hasTimeBudget()) break;
+
+            const detail = await firecrawlScrapeJson(
+              firecrawlKey,
+              detailUrl,
+              residentAdvisorDetailSchema,
+              "Extract this single event: artist, venue, date (ISO 8601), ticket URL, image URL. Use only explicit page content; do not guess.",
+              7000,
+            );
+
+            if (!detail?.artist || !detail?.venue || !detail?.date) {
+              await delay(600);
+              continue;
+            }
+
+            const parsedDate = new Date(detail.date);
+            if (Number.isNaN(parsedDate.getTime())) {
+              await delay(600);
+              continue;
+            }
+
+            const normalizedVenue = normalizeVenueName(detail.venue);
+            if (!isInvalidVenue(normalizedVenue) && isStockholmVenue(normalizedVenue)) {
+              events.push({
+                artist: String(detail.artist).split(/[:\-–—|]/)[0].trim(),
+                venue: normalizedVenue,
+                date: parsedDate.toISOString(),
+                ticket_url: detail.ticket_url || detailUrl,
+                tickets_available: true,
+                image_url: isValidImageUrl(detail.image_url) ? detail.image_url : null,
+                event_type: "concert",
+                source: src.name,
+                source_url: detailUrl,
+              });
+            }
+
+            await delay(700);
+          }
+
+          console.log(`Resident Advisor: ${events.length} events`);
+          if (events.length > 0) await upsertEvents(events);
+          totalScraped += events.length;
+          continue;
+        }
+
+        const prompt = src.type === "comedy"
+          ? "Extract stand-up comedy shows. Performer name, venue, date (ISO 8601), ticket URL, availability. Stockholm only."
+          : "Extract music events/DJ nights in Stockholm. Artist name, venue, date (ISO 8601), ticket URL. EXCLUDE non-Stockholm.";
+
         const result = await firecrawlScrapeJson(firecrawlKey, src.url, secondarySourceSchema, prompt, 10000);
         if (result?.events) {
           const events: ScrapedEvent[] = result.events
             .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue), date: e.date,
-              ticket_url: e.ticket_url || null, tickets_available: e.tickets_available ?? false,
-              image_url: e.image_url || null,
-              event_type: src.type, source: src.name, source_url: src.url,
+              venue: normalizeVenueName(e.venue),
+              date: e.date,
+              ticket_url: e.ticket_url || null,
+              tickets_available: e.tickets_available ?? false,
+              image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
+              event_type: src.type,
+              source: src.name,
+              source_url: src.url,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
+
           console.log(`${src.name}: ${events.length} events`);
           if (events.length > 0) await upsertEvents(events);
           totalScraped += events.length;
         }
+
         await delay(2000);
       }
     }
