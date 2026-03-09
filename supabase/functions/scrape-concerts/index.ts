@@ -857,7 +857,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+          if (venue && isEventlyVenueAllowed(venue)) {
             events.push({
               artist,
               venue,
@@ -870,13 +870,15 @@ Deno.serve(async (req) => {
               source_url: eventUrl,
             });
           } else {
-            unresolved.push(JSON.stringify({
-              artist,
-              date: parsedDate.toISOString(),
-              url: eventUrl,
-              image_url: imageUrl || null,
-              event_type: eventType,
-            }));
+            unresolved.push(
+              JSON.stringify({
+                artist,
+                date: parsedDate.toISOString(),
+                url: eventUrl,
+                image_url: imageUrl || null,
+                event_type: eventType,
+              })
+            );
           }
         }
         return { events, unresolved };
