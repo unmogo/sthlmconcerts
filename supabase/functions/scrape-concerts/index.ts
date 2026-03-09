@@ -843,10 +843,10 @@ Deno.serve(async (req) => {
       console.log(`Evently batch ${targetBatch}: scraped=${totalScraped}, upserted=${totalUpserted}`);
     }
 
-    // ==================== BATCH 4-5: EVENTLY VENUE RESOLUTION ====================
-    // Scrape detail pages for events that need venue resolution
-    if (targetBatch >= 4 && targetBatch <= 5) {
-      // Load ALL unresolved events (both music and comedy entries)
+    // ==================== EVENTLY VENUE RESOLUTION (BATCH 4-10) ====================
+    // Resolve venues for Evently events that were flagged because listing pages often show "Stockholm, Sweden".
+    // We spread the queue across batches 4..10 so the pipeline reliably reaches the end.
+    if (targetBatch >= 4) {
       const { data: logEntries } = await supabase
         .from("scrape_log")
         .select("error")
@@ -855,12 +855,18 @@ Deno.serve(async (req) => {
         .limit(10);
 
       let queued: any[] = [];
-      for (const entry of (logEntries || [])) {
+      for (const entry of logEntries || []) {
         try {
           const parsed = JSON.parse(entry.error || "[]");
-          const items = parsed.map((item: string) => {
-            try { return JSON.parse(item); } catch { return null; }
-          }).filter(Boolean);
+          const items = parsed
+            .map((item: string) => {
+              try {
+                return JSON.parse(item);
+              } catch {
+                return null;
+              }
+            })
+            .filter(Boolean);
           queued = queued.concat(items);
         } catch (e) {
           console.error("Failed to parse needs-venue entry:", e);
@@ -870,90 +876,129 @@ Deno.serve(async (req) => {
       // Deduplicate by url
       const seen = new Set<string>();
       queued = queued.filter((item: any) => {
-        if (!item.url || seen.has(item.url)) return false;
+        if (!item?.url || seen.has(item.url)) return false;
         seen.add(item.url);
         return true;
       });
 
-      // Split into 2 batches: batch 4 = first half, batch 5 = second half
-      const half = Math.ceil(queued.length / 2);
-      const start = (targetBatch - 4) * half;
-      const slice = queued.slice(start, start + half);
-      console.log(`Venue resolution: ${slice.length} events (batch ${targetBatch}, offset ${start}, total queued ${queued.length})`);
+      if (queued.length === 0) {
+        console.log("Venue resolution: no queued events found");
+      } else {
+        const resolutionBatches = TOTAL_BATCHES - 3; // batches 4..10 inclusive
+        const idx = Math.min(Math.max(targetBatch - 4, 0), resolutionBatches - 1);
+        const perBatch = Math.ceil(queued.length / resolutionBatches);
+        const start = idx * perBatch;
+        const slice = queued.slice(start, start + perBatch);
 
-      const events: ScrapedEvent[] = [];
-      let processed = 0;
-      let errors = 0;
+        console.log(
+          `Venue resolution: ${slice.length} events (batch ${targetBatch}, offset ${start}, total queued ${queued.length})`
+        );
 
-      for (const item of slice) {
-        if (!hasTimeBudget()) {
-          console.log(`Time budget exhausted after ${processed} events`);
-          break;
-        }
-        if (!item.url) continue;
+        const events: ScrapedEvent[] = [];
+        let processed = 0;
+        let errors = 0;
 
-        try {
-          const detail = await firecrawlScrapeJson(
-            firecrawlKey, item.url, detailSchema,
-            "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
-            5000
-          );
+        for (const item of slice) {
+          if (!hasTimeBudget()) {
+            console.log(`Time budget exhausted after ${processed} events`);
+            break;
+          }
+          if (!item?.url) continue;
 
-          if (detail) {
-            let venue: string | null = null;
+          const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
 
-            if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
-              venue = normalizeVenueName(detail.venue_name);
-            }
-            if (!venue && detail.address) {
-              venue = resolveVenueFromAddress(detail.address);
-            }
-            if (!venue) {
-              const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
-              venue = existingVenueMap.get(dayKey) || null;
-            }
+          // Fast-path: resolve via URL slug or by matching existing same-day venues (no Firecrawl call).
+          let venue: string | null =
+            resolveVenueFromEventlyUrl(item.url) ||
+            existingVenueMap.get(dayKey) ||
+            null;
 
-            if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
-              events.push({
-                artist: item.artist,
-                venue,
-                date: item.date,
-                ticket_url: detail.ticket_url || item.url,
-                tickets_available: detail.tickets_available ?? true,
-                image_url: isValidImageUrl(detail.image_url) ? detail.image_url : (isValidImageUrl(item.image_url) ? item.image_url : null),
-                event_type: item.event_type || "concert",
-                source: "evently",
-                source_url: item.url,
-              });
+          if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+            events.push({
+              artist: item.artist,
+              venue: normalizeVenueName(venue),
+              date: item.date,
+              ticket_url: item.url,
+              tickets_available: true,
+              image_url: isValidImageUrl(item.image_url) ? item.image_url : null,
+              event_type: item.event_type || "concert",
+              source: "evently",
+              source_url: item.url,
+            });
+          } else {
+            try {
+              const detail = await firecrawlScrapeJson(
+                firecrawlKey,
+                item.url,
+                detailSchema,
+                "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
+                4000
+              );
+
+              if (detail) {
+                if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
+                  venue = normalizeVenueName(detail.venue_name);
+                }
+                if (!venue && detail.address) {
+                  venue = resolveVenueFromAddress(detail.address);
+                }
+                if (!venue) {
+                  venue = existingVenueMap.get(dayKey) || null;
+                }
+
+                if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+                  events.push({
+                    artist: item.artist,
+                    venue: normalizeVenueName(venue),
+                    date: item.date,
+                    ticket_url: detail.ticket_url || item.url,
+                    tickets_available: detail.tickets_available ?? true,
+                    image_url: isValidImageUrl(detail.image_url)
+                      ? detail.image_url
+                      : isValidImageUrl(item.image_url)
+                        ? item.image_url
+                        : null,
+                    event_type: item.event_type || "concert",
+                    source: "evently",
+                    source_url: item.url,
+                  });
+                }
+              }
+            } catch (e) {
+              errors++;
+              console.error(`Detail scrape failed for ${item.artist}: ${e?.message || e}`);
             }
           }
-        } catch (e) {
-          errors++;
-          console.error(`Detail scrape failed for ${item.artist}: ${e.message || e}`);
+
+          processed++;
+
+          // Batch upsert every 20 events to avoid losing progress
+          if (events.length >= 20) {
+            try {
+              await upsertEvents(events.splice(0, events.length));
+            } catch (e) {
+              console.error(`Batch upsert failed: ${e?.message || e}`);
+            }
+          }
+
+          // Throttle a bit, but less aggressively than before (many items are fast-path)
+          if (processed % 8 === 0) await delay(500);
         }
 
-        processed++;
-        // Batch upsert every 20 events to avoid losing progress
-        if (events.length >= 20) {
+        // Upsert remaining events
+        if (events.length > 0) {
           try {
-            await upsertEvents(events.splice(0, events.length));
+            await upsertEvents(events);
           } catch (e) {
-            console.error(`Batch upsert failed: ${e.message || e}`);
+            console.error(`Final upsert failed: ${e?.message || e}`);
           }
         }
-        if (processed % 5 === 0) await delay(1000);
-      }
 
-      // Upsert remaining events
-      if (events.length > 0) {
-        try {
-          await upsertEvents(events);
-        } catch (e) {
-          console.error(`Final upsert failed: ${e.message || e}`);
-        }
+        totalScraped += processed;
+        console.log(
+          `Venue resolution done: ${processed} processed, ${totalUpserted} upserted (cumulative), ${errors} errors`
+        );
       }
-      totalScraped = processed;
-      console.log(`Venue resolution done: ${processed} processed, ${totalUpserted} upserted, ${errors} errors`);
     }
 
     // ==================== BATCH 6: VENUE-SPECIFIC SOURCES ====================
