@@ -340,6 +340,46 @@ async function firecrawlScrapeLinks(apiKey: string, url: string, waitFor = 5000)
   }
 }
 
+async function firecrawlScrapeJsonAndLinks(
+  apiKey: string,
+  url: string,
+  schema: any,
+  prompt: string,
+  waitFor = 5000,
+  onlyMainContent = true,
+): Promise<{ json: any | null; links: string[] }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        formats: ["json", "links"],
+        jsonOptions: { schema, prompt },
+        onlyMainContent,
+        waitFor,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (!response.ok) {
+      console.error(`Firecrawl json+links error for ${url}:`, data);
+      return { json: null, links: [] };
+    }
+    return {
+      json: data?.data?.json || data?.json || null,
+      links: (data?.data?.links || data?.links || []) as string[],
+    };
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`Firecrawl json+links fetch error for ${url}:`, err);
+    return { json: null, links: [] };
+  }
+}
+
 async function firecrawlMap(apiKey: string, url: string, search?: string): Promise<string[]> {
   const controller = new AbortController();
   // Mapping can take longer than a scrape on long / JS-heavy listing pages.
