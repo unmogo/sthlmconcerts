@@ -326,7 +326,8 @@ async function firecrawlScrapeLinks(apiKey: string, url: string, waitFor = 5000)
 
 async function firecrawlMap(apiKey: string, url: string, search?: string): Promise<string[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  // Mapping can take longer than a scrape on long / JS-heavy listing pages.
+  const timeout = setTimeout(() => controller.abort(), 90_000);
   try {
     const response = await fetch("https://api.firecrawl.dev/v1/map", {
       method: "POST",
