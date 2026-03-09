@@ -347,7 +347,7 @@ async function firecrawlScrapeJsonAndLinks(
   prompt: string,
   waitFor = 5000,
   onlyMainContent = true,
-): Promise<{ json: any | null; links: string[] }> {
+): Promise<{ json: any | null; links: string[]; markdown: string | null }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90_000);
   try {
@@ -356,7 +356,7 @@ async function firecrawlScrapeJsonAndLinks(
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         url,
-        formats: ["json", "links"],
+        formats: ["json", "links", "markdown"],
         jsonOptions: { schema, prompt },
         onlyMainContent,
         waitFor,
@@ -367,16 +367,17 @@ async function firecrawlScrapeJsonAndLinks(
     const data = await response.json();
     if (!response.ok) {
       console.error(`Firecrawl json+links error for ${url}:`, data);
-      return { json: null, links: [] };
+      return { json: null, links: [], markdown: null };
     }
     return {
       json: data?.data?.json || data?.json || null,
       links: (data?.data?.links || data?.links || []) as string[],
+      markdown: data?.data?.markdown || data?.markdown || null,
     };
   } catch (err) {
     clearTimeout(timeout);
     console.error(`Firecrawl json+links fetch error for ${url}:`, err);
-    return { json: null, links: [] };
+    return { json: null, links: [], markdown: null };
   }
 }
 
