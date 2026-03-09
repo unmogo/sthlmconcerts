@@ -602,7 +602,8 @@ Deno.serve(async (req) => {
         // 2) Safety net: map all event URLs reachable from the listing to avoid the "exactly 300" cap.
         // We queue any missing URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
         try {
-          const mappedLinks = await firecrawlMap(firecrawlKey, listingBaseUrl, "/en/events/");
+          // Map against the *same* long listing URL; Firecrawl may normalize returned URLs (trailing slash/query).
+          const mappedLinks = await firecrawlMap(firecrawlKey, listingUrl, "/en/events/");
 
           const normalizeLink = (l: string) => {
             const trimmed = (l || "").trim();
@@ -612,13 +613,29 @@ Deno.serve(async (req) => {
             return null;
           };
 
+          const canonicalizeEventUrl = (raw: string) => {
+            try {
+              const u = new URL(raw);
+              u.hash = "";
+              u.search = "";
+              let s = u.toString();
+              if (s.endsWith("/")) s = s.slice(0, -1);
+              return s;
+            } catch {
+              let s = String(raw).split("#")[0].split("?")[0];
+              if (s.endsWith("/")) s = s.slice(0, -1);
+              return s;
+            }
+          };
+
           const candidateUrls = (mappedLinks || [])
             .map((l) => normalizeLink(String(l)))
-            .filter(Boolean) as string[];
+            .filter(Boolean)
+            .map((u) => canonicalizeEventUrl(String(u))) as string[];
 
           const eventUrls = candidateUrls
             .filter((u) => u.includes("evently.se/en/events/"))
-            // Ensure the URL has the trailing date/time slug we rely on
+            // URL can come back as .../260315-1930 or .../260315-1930/ (we canonicalize trailing slash away above)
             .filter((u) => /\/\d{6}-\d{4}$/.test(u));
 
           const seenUrls = new Set<string>();
