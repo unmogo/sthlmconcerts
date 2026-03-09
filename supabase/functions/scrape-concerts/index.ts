@@ -1180,7 +1180,10 @@ Deno.serve(async (req) => {
       // and loading thousands of scrape_log rows is expensive and can starve actual processing time.
       const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 600);
       const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 1200);
-      // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
+
+      // Candidate "done" URLs from historical processed logs.
+      // We'll validate these against the concerts table before excluding queued items,
+      // so URLs that were previously marked processed but never inserted can retry.
       const processedUrls = new Set<string>();
       for (const row of processedEntryErrors) {
         const raw = row.error;
@@ -1215,6 +1218,41 @@ Deno.serve(async (req) => {
           queued = queued.concat(items);
         } catch (e) {
           console.error("Failed to parse needs-venue entry:", e);
+        }
+      }
+
+      // Only keep processed URLs that are actually present in concerts.
+      // This avoids permanently skipping URLs when a previous insert/update failed.
+      const queuedUrlSet = new Set<string>();
+      for (const item of queued) {
+        const url = canonicalizeUrl(String(item?.url || ""));
+        if (url) queuedUrlSet.add(url);
+      }
+
+      if (processedUrls.size > 0) {
+        const candidates = Array.from(processedUrls).filter((u) => queuedUrlSet.has(u));
+        processedUrls.clear();
+
+        const CONFIRM_PAGE_SIZE = 500;
+        for (let i = 0; i < candidates.length; i += CONFIRM_PAGE_SIZE) {
+          const chunk = candidates.slice(i, i + CONFIRM_PAGE_SIZE);
+          if (chunk.length === 0) continue;
+
+          const { data, error } = await supabase
+            .from("concerts")
+            .select("source_url")
+            .eq("source", "evently")
+            .in("source_url", chunk);
+
+          if (error) {
+            console.error("Failed to validate processed URLs against concerts:", error.message);
+            continue;
+          }
+
+          for (const row of data || []) {
+            const url = canonicalizeUrl(String((row as any).source_url || ""));
+            if (url) processedUrls.add(url);
+          }
         }
       }
 
