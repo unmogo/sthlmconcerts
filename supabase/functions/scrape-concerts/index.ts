@@ -1131,7 +1131,7 @@ Deno.serve(async (req) => {
     // ==================== EVENTLY VENUE RESOLUTION (BATCH 4-10) ====================
     // Resolve venues for Evently events that were flagged because listing pages often show "Stockholm, Sweden".
     // We spread the queue across batches 4..10 so the pipeline reliably reaches the end.
-    if (targetBatch >= 4) {
+    if (targetBatch >= 4 && targetBatch <= 8) {
       // Evently venue resolution can hit time limits, so we must (a) not drop tail chunks and
       // (b) make progress across batches/invocations without reprocessing the same URLs.
 
@@ -1233,7 +1233,7 @@ Deno.serve(async (req) => {
         const candidates = Array.from(processedUrls).filter((u) => queuedUrlSet.has(u));
         processedUrls.clear();
 
-        const CONFIRM_PAGE_SIZE = 500;
+        const CONFIRM_PAGE_SIZE = 80;
         for (let i = 0; i < candidates.length; i += CONFIRM_PAGE_SIZE) {
           const chunk = candidates.slice(i, i + CONFIRM_PAGE_SIZE);
           if (chunk.length === 0) continue;
@@ -1307,13 +1307,22 @@ Deno.serve(async (req) => {
       // Keep near-term ordering inside each bucket, but always process fresh queue first.
       const slice = [...sortByDateAsc(freshQueued), ...sortByDateAsc(backlogQueued)];
 
-       // Fair scheduling: the queue can be huge (10k+), and strict date-order processing starves late-year events.
-       // Build a month-bucketed round-robin worklist so each invocation touches *all* months (including late 2026).
+       // Fair scheduling: rotate the queue window between invocations so unresolved head items
+       // don't repeatedly starve later URLs in the same month.
+       const MAX_ITEMS_PER_INVOCATION = 320;
+       const ROTATION_WINDOW_MS = 5 * 60 * 1000;
+       const rotationSeed = Math.floor(Date.now() / ROTATION_WINDOW_MS) + Math.max(0, targetBatch - 4);
+       const rotationOffset = slice.length > 0 ? (rotationSeed * 131) % slice.length : 0;
+       const rotatedSlice =
+         slice.length > 0
+           ? [...slice.slice(rotationOffset), ...slice.slice(0, rotationOffset)]
+           : slice;
+
        let worklist = (() => {
-         if (slice.length <= 1) return slice;
+         if (rotatedSlice.length <= 1) return rotatedSlice;
 
          const monthBuckets = new Map<string, any[]>();
-         for (const it of slice) {
+         for (const it of rotatedSlice) {
            const d = String(it?.date || "");
            const monthKey = d.length >= 7 ? d.slice(0, 7) : "unknown"; // YYYY-MM
            const arr = monthBuckets.get(monthKey) || [];
@@ -1322,9 +1331,8 @@ Deno.serve(async (req) => {
          }
 
          const months = Array.from(monthBuckets.keys()).sort(); // ISO months sort naturally
-
-         const MAX_ITEMS_PER_INVOCATION = 260;
          const out: any[] = [];
+
          while (out.length < MAX_ITEMS_PER_INVOCATION) {
            let progressedThisRound = false;
            for (const m of months) {
@@ -1337,18 +1345,18 @@ Deno.serve(async (req) => {
            if (!progressedThisRound) break;
          }
 
-          return out.filter(Boolean);
-        })();
+         return out.filter(Boolean);
+       })();
 
        // If specific debug URLs are provided, prioritize them (and optionally only process them).
        if (debugUrlSet.size > 0) {
-         const isDebugItem = (it: any) => debugUrlSet.has(String(it?.url || ""));
-         const debugItems = worklist.filter(isDebugItem);
+         const debugItemsFromQueue = slice.filter((it: any) => debugUrlSet.has(String(it?.url || "")));
          if (debugOnly) {
-           worklist = debugItems;
-         } else if (debugItems.length > 0) {
-           const nonDebugItems = worklist.filter((it: any) => !isDebugItem(it));
-           worklist = [...debugItems, ...nonDebugItems];
+           worklist = debugItemsFromQueue;
+         } else if (debugItemsFromQueue.length > 0) {
+           const debugSet = new Set(debugItemsFromQueue.map((it: any) => String(it?.url || "")));
+           const nonDebugItems = worklist.filter((it: any) => !debugSet.has(String(it?.url || "")));
+           worklist = [...debugItemsFromQueue, ...nonDebugItems];
          }
        }
 
@@ -1720,9 +1728,8 @@ Deno.serve(async (req) => {
         await delay(2000);
       }
 
-      // Resident Advisor — scrape LISTING page with JSON extraction (not individual detail pages)
+      // Resident Advisor — scrape pages 1-3 explicitly for fuller coverage
       if (hasTimeBudget()) {
-        console.log("Gap-fill: Resident Advisor (listing page)");
         const raSchema = {
           type: "object",
           properties: {
@@ -1744,16 +1751,28 @@ Deno.serve(async (req) => {
           required: ["events"],
         };
 
-        const raResult = await firecrawlScrapeJson(
-          firecrawlKey,
+        const raPages = [
           "https://ra.co/events/se/stockholm",
-          raSchema,
-          "Extract ALL music events/DJ nights listed on this page. For each: artist or event name, venue name, date (ISO 8601, 2026), ticket/event URL, image URL. Stockholm only.",
-          12000
-        );
+          "https://ra.co/events/se/stockholm?page=2",
+          "https://ra.co/events/se/stockholm?page=3",
+        ];
 
-        if (raResult?.events) {
-          const events: ScrapedEvent[] = raResult.events
+        const raEvents: ScrapedEvent[] = [];
+        const raSeenKeys = new Set<string>();
+
+        for (const raPageUrl of raPages) {
+          if (!hasTimeBudget()) break;
+          console.log(`Gap-fill: Resident Advisor (${raPageUrl})`);
+
+          const raResult = await firecrawlScrapeJson(
+            firecrawlKey,
+            raPageUrl,
+            raSchema,
+            "Extract ALL music events/DJ nights listed on this page. For each: artist or event name, venue name, date (ISO 8601, 2026), ticket/event URL, image URL. Stockholm only.",
+            12000
+          );
+
+          const pageEvents: ScrapedEvent[] = (raResult?.events || [])
             .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
             .map((e: any) => ({
               artist: e.artist.split(/[:\-–—|]/)[0].trim(),
@@ -1764,13 +1783,26 @@ Deno.serve(async (req) => {
               image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
               event_type: "concert",
               source: "Resident Advisor",
-              source_url: e.ticket_url || "https://ra.co/events/se/stockholm",
+              source_url: e.ticket_url || raPageUrl,
             }))
             .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
 
-          console.log(`Resident Advisor: ${events.length} events`);
-          if (events.length > 0) await upsertEvents(events);
-          totalScraped += events.length;
+          let accepted = 0;
+          for (const e of pageEvents) {
+            const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
+            if (raSeenKeys.has(key)) continue;
+            raSeenKeys.add(key);
+            raEvents.push(e);
+            accepted++;
+          }
+
+          console.log(`Resident Advisor (${raPageUrl}): ${accepted} events`);
+          await delay(1200);
+        }
+
+        if (raEvents.length > 0) {
+          await upsertEvents(raEvents);
+          totalScraped += raEvents.length;
         }
       }
     }
