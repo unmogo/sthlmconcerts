@@ -1,11 +1,13 @@
-import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, ImageIcon, Activity } from "lucide-react";
+import { Music } from "lucide-react";
 import { triggerScrape, triggerFetchImages } from "@/lib/api/concerts";
 import { useState } from "react";
 import { ScrapeLogDashboard } from "./ScrapeLogDashboard";
+import { FilterTabs } from "./header/FilterTabs";
+import { AdminControls } from "./header/AdminControls";
+import { AuthButton } from "./header/AuthButton";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
 import type { FilterType } from "@/types/concert";
 
 interface HeaderProps {
@@ -25,7 +27,6 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, isAdmin, signOut } = useAuth();
-  const navigate = useNavigate();
 
   const handleScrape = async () => {
     setScraping(true);
