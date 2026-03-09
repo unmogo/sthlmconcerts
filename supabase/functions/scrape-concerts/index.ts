@@ -564,19 +564,106 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Helper: scrape + parse one category from page=60
+      // Helper: scrape + parse one category, and use Firecrawl Map to capture tail events beyond markdown truncation
       async function scrapeAndParseCategory(category: "music" | "standup", storageSource: string): Promise<ScrapedEvent[]> {
-        const url = `https://evently.se/en/place/se/stockholm?categories=${category}&page=60`;
-        console.log(`Scraping ALL ${category} events from ${url}...`);
-        const md = await firecrawlScrapeMarkdown(firecrawlKey, url, 15000);
-        if (!md || md.length < 100) {
-          console.log(`No content for ${category}`);
-          return [];
-        }
-        console.log(`Got ${md.length} chars of markdown for ${category}`);
+        const listingBaseUrl = `https://evently.se/en/place/se/stockholm?categories=${category}`;
+        const listingUrl = `${listingBaseUrl}&page=1`;
 
-        const { events, unresolved } = parseEventlyMarkdown(md, category);
-        console.log(`Parsed ${events.length} events with venues, ${unresolved.length} unresolved`);
+        let events: ScrapedEvent[] = [];
+        let unresolved: string[] = [];
+
+        // 1) Fast path: scrape listing markdown (often enough to upsert the near-term items).
+        console.log(`Scraping ${category} listing markdown from ${listingUrl}...`);
+        const md = await firecrawlScrapeMarkdown(firecrawlKey, listingUrl, 15000);
+        if (md && md.length >= 100) {
+          console.log(`Got ${md.length} chars of markdown for ${category}`);
+          const parsed = parseEventlyMarkdown(md, category);
+          events = parsed.events;
+          unresolved = parsed.unresolved;
+          console.log(`Parsed ${events.length} events with venues, ${unresolved.length} unresolved`);
+        } else {
+          console.log(`No (or too small) markdown content for ${category}`);
+        }
+
+        // 2) Safety net: map all event URLs reachable from the listing to avoid the "exactly 300" cap.
+        // We queue any missing URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
+        try {
+          const mappedLinks = await firecrawlMap(firecrawlKey, listingBaseUrl, "/en/events/");
+
+          const normalizeLink = (l: string) => {
+            const trimmed = (l || "").trim();
+            if (!trimmed) return null;
+            if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+            if (trimmed.startsWith("/")) return `https://evently.se${trimmed}`;
+            return null;
+          };
+
+          const candidateUrls = (mappedLinks || [])
+            .map((l) => normalizeLink(String(l)))
+            .filter(Boolean) as string[];
+
+          const eventUrls = candidateUrls
+            .filter((u) => u.includes("evently.se/en/events/"))
+            // Ensure the URL has the trailing date/time slug we rely on
+            .filter((u) => /\/\d{6}-\d{4}$/.test(u));
+
+          const seenUrls = new Set<string>();
+          for (const e of events) seenUrls.add(e.source_url);
+          for (const raw of unresolved) {
+            try {
+              const obj = JSON.parse(raw);
+              if (obj?.url) seenUrls.add(String(obj.url));
+            } catch {
+              // ignore
+            }
+          }
+
+          const extra: string[] = [];
+          for (const eventUrl of eventUrls) {
+            if (seenUrls.has(eventUrl)) continue;
+
+            // Derive a best-effort title/artist from the URL slug (venue resolved in later batches).
+            const slugDateMatch = eventUrl.match(/\/(\d{6})-(\d{4})$/);
+            if (!slugDateMatch) continue;
+
+            const [_, datePart, timePart] = slugDateMatch;
+            const year = "20" + datePart.substring(0, 2);
+            const month = datePart.substring(2, 4);
+            const day = datePart.substring(4, 6);
+            const hour = timePart.substring(0, 2);
+            const minute = timePart.substring(2, 4);
+            const parsedDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:00`);
+            if (isNaN(parsedDate.getTime()) || parsedDate < new Date()) continue;
+
+            const slugMatch = eventUrl.match(/\/en\/events\/[^/]+\/([^/]+)\//);
+            const rawSlug = slugMatch?.[1] ? decodeURIComponent(slugMatch[1]) : "event";
+            const artist = rawSlug
+              .replace(/[-_]+/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+
+            extra.push(
+              JSON.stringify({
+                artist: artist.length ? artist : rawSlug,
+                date: parsedDate.toISOString(),
+                url: eventUrl,
+                image_url: null,
+                event_type: category === "standup" ? "comedy" : "concert",
+              })
+            );
+
+            seenUrls.add(eventUrl);
+          }
+
+          if (extra.length > 0) {
+            console.log(`Evently map: discovered ${eventUrls.length} event URLs; queued +${extra.length} extra items`);
+            unresolved = unresolved.concat(extra);
+          } else {
+            console.log(`Evently map: discovered ${eventUrls.length} event URLs; no extra items needed`);
+          }
+        } catch (e) {
+          console.error("Evently map failed:", e);
+        }
 
         // Store parsed events in scrape_log for resume
         if (events.length > 0) {
