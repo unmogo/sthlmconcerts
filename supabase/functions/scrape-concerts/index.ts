@@ -254,19 +254,35 @@ function extractVenueFromTitle(title: string): { artist: string; venue: string |
 
 // ==================== FIRECRAWL ====================
 
-async function firecrawlScrapeJson(apiKey: string, url: string, schema: any, prompt: string, waitFor = 5000): Promise<any> {
+async function firecrawlScrapeJson(
+  apiKey: string,
+  url: string,
+  schema: any,
+  prompt: string,
+  waitFor = 5000,
+  onlyMainContent = true,
+): Promise<any> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ url, formats: ["json"], jsonOptions: { schema, prompt }, onlyMainContent: true, waitFor }),
+      body: JSON.stringify({
+        url,
+        formats: ["json"],
+        jsonOptions: { schema, prompt },
+        onlyMainContent,
+        waitFor,
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
     const data = await response.json();
-    if (!response.ok) { console.error(`Firecrawl error for ${url}:`, data); return null; }
+    if (!response.ok) {
+      console.error(`Firecrawl error for ${url}:`, data);
+      return null;
+    }
     return data?.data?.json || data?.json || null;
   } catch (err) {
     clearTimeout(timeout);
