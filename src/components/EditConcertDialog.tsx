@@ -1,12 +1,8 @@
-import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { updateConcert } from "@/lib/api/concerts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import type { Concert } from "@/types/concert";
+import { updateConcert } from "@/lib/api/concerts";
+import { ConcertForm, type ConcertFormData } from "./shared/ConcertForm";
+import type { Concert, EventType } from "@/types/concert";
 
 interface EditConcertDialogProps {
   concert: Concert;
@@ -14,87 +10,29 @@ interface EditConcertDialogProps {
 }
 
 export function EditConcertDialog({ concert, onClose }: EditConcertDialogProps) {
-  const [artist, setArtist] = useState(concert.artist);
-  const [venue, setVenue] = useState(concert.venue);
-  const [date, setDate] = useState(concert.date.slice(0, 16)); // datetime-local format
-  const [ticketUrl, setTicketUrl] = useState(concert.ticket_url || "");
-  const [imageUrl, setImageUrl] = useState(concert.image_url || "");
-  const [ticketsAvailable, setTicketsAvailable] = useState(concert.tickets_available ?? false);
-  const [saving, setSaving] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateConcert(concert.id, {
-        artist,
-        venue,
-        date: new Date(date).toISOString(),
-        ticket_url: ticketUrl || null,
-        image_url: imageUrl || null,
-        tickets_available: ticketsAvailable,
-      });
-      toast({ title: "Updated", description: `${artist} updated successfully` });
-      queryClient.invalidateQueries({ queryKey: ["concerts"] });
-      onClose();
-    } catch {
-      toast({ title: "Error", description: "Failed to update", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+  const handleSubmit = async (data: ConcertFormData) => {
+    await updateConcert(concert.id, {
+      ...data,
+      date: new Date(data.date).toISOString(),
+    });
+    toast({ title: "Concert updated", description: `${data.artist} updated successfully` });
+    queryClient.invalidateQueries({ queryKey: ["concerts"] });
+  };
+
+  const initialData: Partial<Concert> = {
+    ...concert,
+    date: concert.date.slice(0, 16),
   };
 
   return (
-    <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
-        <DialogHeader>
-          <DialogTitle>Edit Event</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="artist">Artist</Label>
-            <Input id="artist" value={artist} onChange={(e) => setArtist(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="venue">Venue</Label>
-            <Input id="venue" value={venue} onChange={(e) => setVenue(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="date">Date & Time</Label>
-            <Input id="date" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="edit-status">Ticket Status</Label>
-            <select
-              id="edit-status"
-              value={ticketsAvailable ? "on_sale" : "tba"}
-              onChange={(e) => setTicketsAvailable(e.target.value === "on_sale")}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="tba">TBA</option>
-              <option value="on_sale">On Sale</option>
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="ticket_url">Ticket URL</Label>
-            <Input id="ticket_url" value={ticketUrl} onChange={(e) => setTicketUrl(e.target.value)} placeholder="https://..." />
-          </div>
-          <div>
-            <Label htmlFor="image_url">Image URL</Label>
-            <Input id="image_url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
-            {imageUrl && (
-              <img src={imageUrl} alt="Preview" className="mt-2 h-24 w-full rounded-md object-cover" />
-            )}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <ConcertForm
+      mode="edit"
+      initialData={initialData}
+      onSubmit={handleSubmit}
+      onClose={onClose}
+    />
   );
 }
