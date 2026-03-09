@@ -401,8 +401,11 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const { startTime, hasTimeBudget } = createTimeBudget();
+
   let targetBatch = 1;
-  let chain = false;
+  let chainRequested = false;
+  let chainedAlready = false;
   let totalScraped = 0;
   let totalUpserted = 0;
   let supabase: any = null;
@@ -411,8 +414,10 @@ Deno.serve(async (req) => {
     try {
       const body = await req.json();
       if (body?.batch) targetBatch = Number(body.batch);
-      if (body?.chain) chain = Boolean(body.chain);
-    } catch { chain = true; }
+      if (body?.chain !== undefined) chainRequested = Boolean(body.chain);
+    } catch {
+      chainRequested = true;
+    }
 
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
     if (!firecrawlKey) {
