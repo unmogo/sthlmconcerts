@@ -1291,6 +1291,12 @@ Deno.serve(async (req) => {
               source_url: item.url,
             });
             urlsForEvents.push(item.url);
+            if (isDebugUrl) {
+              debugLog("venue_resolution_item_queued_fastpath", {
+                url: item.url,
+                venue: normalizeVenueName(venue),
+              });
+            }
           } else {
             try {
               const detail = await firecrawlScrapeJson(
