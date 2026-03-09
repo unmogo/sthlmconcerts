@@ -470,6 +470,14 @@ Deno.serve(async (req) => {
     }
   };
   const debugUrlSet = new Set<string>();
+  const debugLog = (label: string, data: unknown) => {
+    if (debugUrlSet.size === 0) return;
+    try {
+      console.log(`DEBUG:${label} ${JSON.stringify(data)}`);
+    } catch {
+      console.log(`DEBUG:${label}`, data);
+    }
+  };
 
   try {
     try {
