@@ -287,12 +287,40 @@ async function firecrawlScrapeMarkdown(apiKey: string, url: string, waitFor = 50
     });
     clearTimeout(timeout);
     const data = await response.json();
-    if (!response.ok) { console.error(`Firecrawl error for ${url}:`, data); return null; }
+    if (!response.ok) {
+      console.error(`Firecrawl error for ${url}:`, data);
+      return null;
+    }
     return data?.data?.markdown || data?.markdown || null;
   } catch (err) {
     clearTimeout(timeout);
     console.error(`Firecrawl fetch error for ${url}:`, err);
     return null;
+  }
+}
+
+async function firecrawlScrapeLinks(apiKey: string, url: string, waitFor = 5000): Promise<string[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      // `links` often contains more complete coverage than markdown when pages are long / truncated.
+      body: JSON.stringify({ url, formats: ["links"], onlyMainContent: false, waitFor }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (!response.ok) {
+      console.error(`Firecrawl links error for ${url}:`, data);
+      return [];
+    }
+    return (data?.data?.links || data?.links || []) as string[];
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`Firecrawl links fetch error for ${url}:`, err);
+    return [];
   }
 }
 
@@ -308,8 +336,12 @@ async function firecrawlMap(apiKey: string, url: string, search?: string): Promi
     });
     clearTimeout(timeout);
     const data = await response.json();
-    if (!response.ok) { console.error("Firecrawl map error:", data); return []; }
-    return data?.links || [];
+    if (!response.ok) {
+      console.error("Firecrawl map error:", data);
+      return [];
+    }
+    // Firecrawl responses sometimes nest under `data` (similar to scrape).
+    return data?.links || data?.data?.links || [];
   } catch (err) {
     clearTimeout(timeout);
     console.error("Firecrawl map failed:", err);
@@ -595,10 +627,10 @@ Deno.serve(async (req) => {
           console.log(`No (or too small) markdown content for ${category}`);
         }
 
-        // 2) Safety net: map all event URLs reachable from the listing to avoid the "exactly 300" cap.
-        // We queue any missing URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
+        // 2) Safety net: scrape all links from the listing (more reliable than markdown on very long pages)
+        // and queue any missing event URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
         try {
-          const mappedLinks = await firecrawlMap(firecrawlKey, listingBaseUrl, "/en/events/");
+          const listingLinks = await firecrawlScrapeLinks(firecrawlKey, listingUrl, 15000);
 
           const normalizeLink = (l: string) => {
             const trimmed = (l || "").trim();
@@ -608,14 +640,31 @@ Deno.serve(async (req) => {
             return null;
           };
 
-          const candidateUrls = (mappedLinks || [])
+          const canonicalizeEventUrl = (raw: string) => {
+            try {
+              const u = new URL(raw);
+              u.hash = "";
+              u.search = "";
+              let s = u.toString();
+              if (s.endsWith("/")) s = s.slice(0, -1);
+              return s;
+            } catch {
+              let s = String(raw).split("#")[0].split("?")[0];
+              if (s.endsWith("/")) s = s.slice(0, -1);
+              return s;
+            }
+          };
+
+          const candidateUrls = (listingLinks || [])
             .map((l) => normalizeLink(String(l)))
-            .filter(Boolean) as string[];
+            .filter(Boolean)
+            .map((u) => canonicalizeEventUrl(String(u))) as string[];
 
           const eventUrls = candidateUrls
             .filter((u) => u.includes("evently.se/en/events/"))
-            // Ensure the URL has the trailing date/time slug we rely on
             .filter((u) => /\/\d{6}-\d{4}$/.test(u));
+
+          console.log(`Evently links: extracted ${listingLinks.length} links; ${eventUrls.length} look like event URLs`);
 
           const seenUrls = new Set<string>();
           for (const e of events) seenUrls.add(e.source_url);
@@ -666,13 +715,13 @@ Deno.serve(async (req) => {
           }
 
           if (extra.length > 0) {
-            console.log(`Evently map: discovered ${eventUrls.length} event URLs; queued +${extra.length} extra items`);
+            console.log(`Evently links: queued +${extra.length} extra items`);
             unresolved = unresolved.concat(extra);
           } else {
-            console.log(`Evently map: discovered ${eventUrls.length} event URLs; no extra items needed`);
+            console.log(`Evently links: no extra items needed`);
           }
         } catch (e) {
-          console.error("Evently map failed:", e);
+          console.error("Evently links failed:", e);
         }
 
         // Store parsed events in scrape_log for resume
