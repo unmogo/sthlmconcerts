@@ -7,9 +7,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { fetchConcerts, deleteConcerts } from "@/lib/api/concerts";
 import { useToast } from "@/hooks/use-toast";
 import { Search } from "lucide-react";
-import type { EventType } from "@/types/concert";
-
-type FilterType = EventType | "all" | "favorites";
+import type { FilterType } from "@/types/concert";
 
 const Index = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

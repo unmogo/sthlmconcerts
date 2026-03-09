@@ -29,6 +29,8 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
 
   const grouped = useMemo(() => {
     if (!concerts) return [];
+    
+    // Apply filter first
     let filtered: Concert[];
     if (filter === "favorites") {
       filtered = concerts.filter((c) => favoriteIds.includes(c.id));
@@ -37,13 +39,10 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
     } else {
       filtered = concerts.filter((c) => c.event_type === filter);
     }
+    
     // Apply search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (c) => c.artist.toLowerCase().includes(q) || normalizeVenueName(c.venue).toLowerCase().includes(q)
-      );
-    }
+    filtered = filterBySearch(filtered, searchQuery);
+    
     return groupConcerts(filtered);
   }, [concerts, filter, favoriteIds, searchQuery]);
 
