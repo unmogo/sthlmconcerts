@@ -1028,7 +1028,7 @@ Deno.serve(async (req) => {
         .select("error")
         .eq("source", "evently-venue-processed")
         .order("created_at", { ascending: false })
-        .limit(200);
+        .limit(2000);
 
       const processedUrls = new Set<string>();
       for (const entry of processedEntries || []) {
