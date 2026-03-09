@@ -1039,29 +1039,50 @@ Deno.serve(async (req) => {
       // Evently venue resolution can hit time limits, so we must (a) not drop tail chunks and
       // (b) make progress across batches/invocations without reprocessing the same URLs.
 
-      const { data: logEntries } = await supabase
-        .from("scrape_log")
-        .select("error")
-        .eq("source", "evently-needs-venue")
-        // IMPORTANT: newest-first is fine because we dedupe by URL below, but we must
-        // load enough history so tail events don’t fall out of the window.
-        .order("created_at", { ascending: false })
-        .limit(5000);
+      // PostgREST enforces a default max of 1000 rows per request; we must page
+      // or tail URLs will fall out of the window.
+      const PAGE_SIZE = 1000;
+      async function fetchLogErrorsBySource(source: string, maxRows: number): Promise<string[]> {
+        const out: string[] = [];
+        for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
+          const { data, error } = await supabase
+            .from("scrape_log")
+            .select("error")
+            .eq("source", source)
+            .order("created_at", { ascending: false })
+            .range(offset, offset + PAGE_SIZE - 1);
+
+          if (error) {
+            console.error(`Failed to fetch scrape_log(${source}) page @${offset}:`, error.message);
+            break;
+          }
+          if (!data || data.length === 0) break;
+
+          for (const row of data) out.push(row.error || "");
+
+          // Stop early if we're just debugging and we already have all URLs covered.
+          if (debugUrlSet.size > 0) {
+            const joined = (data as any[]).map((r) => String(r.error || "")).join("\n");
+            let allPresent = true;
+            for (const u of debugUrlSet) {
+              if (!joined.includes(u)) { allPresent = false; break; }
+            }
+            if (allPresent) break;
+          }
+        }
+        return out;
+      }
+
+      const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 5000);
+      const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 2000);
 
       // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
-      const { data: processedEntries } = await supabase
-        .from("scrape_log")
-        .select("error")
-        .eq("source", "evently-venue-processed")
-        .order("created_at", { ascending: false })
-        .limit(2000);
-
       const processedUrls = new Set<string>();
-      for (const entry of processedEntries || []) {
+      for (const raw of processedEntryErrors) {
         try {
-          const arr = JSON.parse(entry.error || "[]");
+          const arr = JSON.parse(raw || "[]");
           for (const u of arr || []) {
-            if (typeof u === "string" && u) processedUrls.add(u);
+            if (typeof u === "string" && u) processedUrls.add(canonicalizeUrl(u));
           }
         } catch {
           // ignore
@@ -1069,9 +1090,9 @@ Deno.serve(async (req) => {
       }
 
       let queued: any[] = [];
-      for (const entry of logEntries || []) {
+      for (const raw of logEntryErrors) {
         try {
-          const parsed = JSON.parse(entry.error || "[]");
+          const parsed = JSON.parse(raw || "[]");
           const items = parsed
             .map((item: string) => {
               try {
