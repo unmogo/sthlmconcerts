@@ -77,8 +77,23 @@ export const normalizeForGroup = (artistName: string): string =>
     .replace(/\s+[wW]\/\s+.*/g, "") // remove "w/ Guest"
     .replace(/\s*\+\s+förband.*/gi, "") // remove "+ förband"
     .split(/[:\-–—|]/)[0]
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+
+const COMEDY_SERIES_CANONICAL: Array<{ test: RegExp; key: string }> = [
+  { test: /maffia\s+comedy/i, key: "maffia comedy superweekend" },
+  { test: /raw\s+(sthlm|comedy)/i, key: "raw sthlm" },
+  { test: /guldgruvan/i, key: "guldgruvan comedyklubb" },
+  { test: /revolver\s+comedy/i, key: "revolver comedy" },
+];
+
+const canonicalComedySeriesKey = (normalizedArtist: string): string => {
+  for (const rule of COMEDY_SERIES_CANONICAL) {
+    if (rule.test.test(normalizedArtist)) return rule.key;
+  }
+  return normalizedArtist;
+};
 
 /**
  * Generate grouping key for a concert
