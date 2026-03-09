@@ -1237,19 +1237,38 @@ Deno.serve(async (req) => {
           return 0;
         });
 
-      // Fair scheduling: process mostly near-term items, but always pull some from the far-future tail
-      // so “bottom of the list” URLs don't get starved forever.
-      const worklist = (() => {
-        if (slice.length <= 1) return slice;
-        const out: any[] = [];
-        let i = 0;
-        let j = slice.length - 1;
-        while (i <= j) {
-          for (let k = 0; k < 3 && i <= j; k++) out.push(slice[i++]);
-          if (i <= j) out.push(slice[j--]);
-        }
-        return out;
-      })();
+       // Fair scheduling: the queue can be huge (10k+), and strict date-order processing starves late-year events.
+       // Build a month-bucketed round-robin worklist so each invocation touches *all* months (including late 2026).
+       const worklist = (() => {
+         if (slice.length <= 1) return slice;
+
+         const monthBuckets = new Map<string, any[]>();
+         for (const it of slice) {
+           const d = String(it?.date || "");
+           const monthKey = d.length >= 7 ? d.slice(0, 7) : "unknown"; // YYYY-MM
+           const arr = monthBuckets.get(monthKey) || [];
+           arr.push(it);
+           monthBuckets.set(monthKey, arr);
+         }
+
+         const months = Array.from(monthBuckets.keys()).sort(); // ISO months sort naturally
+
+         const MAX_ITEMS_PER_INVOCATION = 260;
+         const out: any[] = [];
+         while (out.length < MAX_ITEMS_PER_INVOCATION) {
+           let progressedThisRound = false;
+           for (const m of months) {
+             const bucket = monthBuckets.get(m);
+             if (!bucket || bucket.length === 0) continue;
+             out.push(bucket.shift());
+             progressedThisRound = true;
+             if (out.length >= MAX_ITEMS_PER_INVOCATION) break;
+           }
+           if (!progressedThisRound) break;
+         }
+
+         return out.filter(Boolean);
+       })();
 
       if (debugUrlSet.size > 0) {
         debugLog(
