@@ -14,7 +14,7 @@ interface HeaderProps {
   onExport: () => void;
   onAdd: () => void;
   deleting: boolean;
-  filter: EventType | "all" | "favorites";
+  filter: FilterType;
   onFilterChange: (f: EventType | "all" | "favorites") => void;
 }
 
