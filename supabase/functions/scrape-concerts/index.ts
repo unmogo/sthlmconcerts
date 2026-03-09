@@ -500,8 +500,9 @@ Deno.serve(async (req) => {
 
     supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Chain early for long-running batches so the pipeline continues even if this batch hits a hard timeout.
-    if (chainRequested && targetBatch >= 4) {
+    // Chain early ONLY for batch 4 (venue resolution), otherwise batches 4–10 start concurrently and
+    // can overwhelm Firecrawl + race each other before processed URLs are persisted.
+    if (chainRequested && targetBatch === 4) {
       await triggerNextBatch(targetBatch, supabase);
       chainedAlready = true;
     }
@@ -1028,10 +1029,19 @@ Deno.serve(async (req) => {
       }
 
       // ====== BATCH EXECUTION ======
+      // IMPORTANT: For batches 1–3 we must chain as early as possible (after the scrape/parsing work is done)
+      // because client cancellations can terminate the function before it reaches the end-of-request chaining.
       if (targetBatch === 1) {
         // Scrape ALL music events in one call
         const musicEvents = await scrapeAndParseCategory("music", RESUME_SOURCE_MUSIC);
         totalScraped = musicEvents.length;
+
+        // Queue batch 2 now that batch 1 has persisted parsed + needs-venue data.
+        if (chainRequested && !chainedAlready) {
+          await triggerNextBatch(targetBatch, supabase);
+          chainedAlready = true;
+        }
+
         if (musicEvents.length > 0) {
           await upsertFromOffset(musicEvents, 0, "music");
         }
@@ -1046,6 +1056,12 @@ Deno.serve(async (req) => {
         }
         const musicOffset = await loadResumeOffset("music");
         console.log(`Resuming music from offset ${musicOffset}/${storedMusic.length}`);
+
+        // Queue batch 3 early so the pipeline continues even if this invocation is cancelled mid-upsert.
+        if (chainRequested && !chainedAlready) {
+          await triggerNextBatch(targetBatch, supabase);
+          chainedAlready = true;
+        }
 
         if (musicOffset < storedMusic.length && storedMusic.length > 0) {
           totalScraped = storedMusic.length;
@@ -1070,6 +1086,12 @@ Deno.serve(async (req) => {
         }
         const comedyOffset = await loadResumeOffset("comedy");
         console.log(`Resuming comedy from offset ${comedyOffset}/${storedComedy.length}`);
+
+        // Queue batch 4 early so venue-resolution starts even if batch 3 gets cancelled.
+        if (chainRequested && !chainedAlready) {
+          await triggerNextBatch(targetBatch, supabase);
+          chainedAlready = true;
+        }
 
         if (comedyOffset < storedComedy.length && storedComedy.length > 0) {
           totalScraped = storedComedy.length;
