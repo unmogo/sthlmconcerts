@@ -94,88 +94,22 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
         <FilterTabs filter={filter} onFilterChange={onFilterChange} showFavorites={!!user} />
 
         <div className="flex items-center gap-2">
-          {/* Admin-only: selection actions */}
-          {isAdmin && selectedIds.length > 0 && (
-            <button
-              onClick={onDelete}
-              disabled={deleting}
-              className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete {selectedIds.length}
-            </button>
-          )}
-
-          {/* Admin-only: Add, Export, Refresh */}
           {isAdmin && (
-            <>
-              <button
-                onClick={onAdd}
-                className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-              >
-                <Plus className="h-4 w-4" />
-                Add
-              </button>
-
-              <button
-                onClick={onExport}
-                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
-              >
-                <Download className="h-4 w-4" />
-                Export
-              </button>
-
-              <button
-                onClick={handleFetchImages}
-                disabled={fetchingImages}
-                className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-              >
-                <ImageIcon className={`h-4 w-4 ${fetchingImages ? "animate-pulse" : ""}`} />
-                {fetchingImages ? "Fetching…" : "Images"}
-              </button>
-
-              <button
-                onClick={() => setShowLogs(true)}
-                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
-              >
-                <Activity className="h-4 w-4" />
-                Logs
-              </button>
-
-              <button
-                onClick={handleScrape}
-                disabled={scraping}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-neon px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${scraping ? "animate-spin" : ""}`} />
-                {scraping ? "Scraping..." : "Refresh"}
-              </button>
-            </>
+            <AdminControls
+              selectedCount={selectedIds.length}
+              onDelete={onDelete}
+              deleting={deleting}
+              onAdd={onAdd}
+              onExport={onExport}
+              onFetchImages={handleFetchImages}
+              fetchingImages={fetchingImages}
+              onShowLogs={() => setShowLogs(true)}
+              onScrape={handleScrape}
+              scraping={scraping}
+            />
           )}
 
-          {/* Auth button */}
-          {user ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground hidden sm:block truncate max-w-[120px]">
-                {user.email}
-              </span>
-              <button
-                onClick={handleSignOut}
-                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline">Sign out</span>
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => navigate("/auth")}
-              className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-            >
-              <LogIn className="h-4 w-4" />
-              Sign in
-            </button>
-          )}
+          <AuthButton userEmail={user?.email} onSignOut={handleSignOut} />
         </div>
       </div>
     </header>
