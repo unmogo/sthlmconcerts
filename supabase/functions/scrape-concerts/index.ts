@@ -576,7 +576,8 @@ Deno.serve(async (req) => {
       // Helper: scrape + parse one category, and use Firecrawl Map to capture tail events beyond markdown truncation
       async function scrapeAndParseCategory(category: "music" | "standup", storageSource: string): Promise<ScrapedEvent[]> {
         const listingBaseUrl = `https://evently.se/en/place/se/stockholm?categories=${category}`;
-        const listingUrl = `${listingBaseUrl}&page=1`;
+        // Evently loads more content when requesting a high page index; page=60 reliably returns the long list.
+        const listingUrl = `${listingBaseUrl}&page=60`;
 
         let events: ScrapedEvent[] = [];
         let unresolved: string[] = [];
