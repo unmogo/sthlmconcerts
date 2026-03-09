@@ -2,14 +2,28 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Concert } from "@/types/concert";
 
 export async function fetchConcerts(): Promise<Concert[]> {
-  const { data, error } = await supabase
-    .from("concerts")
-    .select("*")
-    .gte("date", new Date().toISOString())
-    .order("date", { ascending: true });
+  // PostgREST defaults to 1000 rows; paginate so late-year concerts don’t “disappear” in the UI.
+  const pageSize = 1000;
+  const all: Concert[] = [];
+  const fromDate = new Date().toISOString();
 
-  if (error) throw error;
-  return (data as Concert[]) || [];
+  for (let offset = 0; offset < 20_000; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("concerts")
+      .select("*")
+      .gte("date", fromDate)
+      .order("date", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw error;
+
+    const chunk = (data as Concert[]) || [];
+    all.push(...chunk);
+
+    if (chunk.length < pageSize) break;
+  }
+
+  return all;
 }
 
 export async function triggerScrape(): Promise<{ success: boolean; message: string }> {
