@@ -451,11 +451,35 @@ Deno.serve(async (req) => {
   let totalUpserted = 0;
   let supabase: any = null;
 
+  // Optional debug mode: pass { debug: { urls: string[] } } in the request body
+  // to trace whether specific Evently URLs are present in the needs-venue queue,
+  // filtered as processed, and/or selected for processing.
+  let debugUrls: string[] = [];
+  const canonicalizeUrl = (raw: string) => {
+    try {
+      const u = new URL(raw);
+      u.hash = "";
+      u.search = "";
+      let s = u.toString();
+      if (s.endsWith("/")) s = s.slice(0, -1);
+      return s;
+    } catch {
+      let s = String(raw || "").split("#")[0].split("?")[0];
+      if (s.endsWith("/")) s = s.slice(0, -1);
+      return s;
+    }
+  };
+  const debugUrlSet = new Set<string>();
+
   try {
     try {
       const body = await req.json();
       if (body?.batch) targetBatch = Number(body.batch);
       if (body?.chain !== undefined) chainRequested = Boolean(body.chain);
+      if (Array.isArray(body?.debug?.urls)) {
+        debugUrls = body.debug.urls.map((u: any) => canonicalizeUrl(String(u)));
+        for (const u of debugUrls) debugUrlSet.add(u);
+      }
     } catch {
       chainRequested = true;
     }
@@ -1015,27 +1039,50 @@ Deno.serve(async (req) => {
       // Evently venue resolution can hit time limits, so we must (a) not drop tail chunks and
       // (b) make progress across batches/invocations without reprocessing the same URLs.
 
-      const { data: logEntries } = await supabase
-        .from("scrape_log")
-        .select("error")
-        .eq("source", "evently-needs-venue")
-        .order("created_at", { ascending: false })
-        .limit(500);
+      // PostgREST enforces a default max of 1000 rows per request; we must page
+      // or tail URLs will fall out of the window.
+      const PAGE_SIZE = 1000;
+      async function fetchLogErrorsBySource(source: string, maxRows: number): Promise<string[]> {
+        const out: string[] = [];
+        for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
+          const { data, error } = await supabase
+            .from("scrape_log")
+            .select("error")
+            .eq("source", source)
+            .order("created_at", { ascending: false })
+            .range(offset, offset + PAGE_SIZE - 1);
+
+          if (error) {
+            console.error(`Failed to fetch scrape_log(${source}) page @${offset}:`, error.message);
+            break;
+          }
+          if (!data || data.length === 0) break;
+
+          for (const row of data) out.push(row.error || "");
+
+          // Stop early if we're just debugging and we already have all URLs covered.
+          if (debugUrlSet.size > 0) {
+            const joined = (data as any[]).map((r) => String(r.error || "")).join("\n");
+            let allPresent = true;
+            for (const u of debugUrlSet) {
+              if (!joined.includes(u)) { allPresent = false; break; }
+            }
+            if (allPresent) break;
+          }
+        }
+        return out;
+      }
+
+      const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 5000);
+      const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 2000);
 
       // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
-      const { data: processedEntries } = await supabase
-        .from("scrape_log")
-        .select("error")
-        .eq("source", "evently-venue-processed")
-        .order("created_at", { ascending: false })
-        .limit(2000);
-
       const processedUrls = new Set<string>();
-      for (const entry of processedEntries || []) {
+      for (const raw of processedEntryErrors) {
         try {
-          const arr = JSON.parse(entry.error || "[]");
+          const arr = JSON.parse(raw || "[]");
           for (const u of arr || []) {
-            if (typeof u === "string" && u) processedUrls.add(u);
+            if (typeof u === "string" && u) processedUrls.add(canonicalizeUrl(u));
           }
         } catch {
           // ignore
@@ -1043,9 +1090,9 @@ Deno.serve(async (req) => {
       }
 
       let queued: any[] = [];
-      for (const entry of logEntries || []) {
+      for (const raw of logEntryErrors) {
         try {
-          const parsed = JSON.parse(entry.error || "[]");
+          const parsed = JSON.parse(raw || "[]");
           const items = parsed
             .map((item: string) => {
               try {
@@ -1064,32 +1111,38 @@ Deno.serve(async (req) => {
       // Deduplicate by url + skip already processed
       const seen = new Set<string>();
       queued = queued.filter((item: any) => {
-        const url = String(item?.url || "");
+        const rawUrl = String(item?.url || "");
+        const url = canonicalizeUrl(rawUrl);
         if (!url) return false;
+
+        // Normalize for consistent dedupe + processed checks
+        item.url = url;
+
         if (processedUrls.has(url)) return false;
         if (seen.has(url)) return false;
         seen.add(url);
         return true;
       });
 
-      if (queued.length === 0) {
+      // CRITICAL FIX:
+      // Do NOT partition by batch number; in practice only batch 4 may run reliably,
+      // and partitioning strands some URLs forever (e.g. the far-future “tail” links).
+      // Instead, process the whole deduped queue until the time budget runs out.
+      const slice = queued
+        .slice()
+        .sort((a: any, b: any) => {
+          const ta = Date.parse(String(a?.date || ""));
+          const tb = Date.parse(String(b?.date || ""));
+          if (Number.isFinite(ta) && Number.isFinite(tb)) return ta - tb;
+          if (Number.isFinite(ta)) return -1;
+          if (Number.isFinite(tb)) return 1;
+          return 0;
+        });
+
+      if (slice.length === 0) {
         console.log("Venue resolution: no queued events found");
       } else {
-        const resolutionBatches = TOTAL_BATCHES - 3; // batches 4..10 inclusive
-        const idx = Math.min(Math.max(targetBatch - 4, 0), resolutionBatches - 1);
-
-        // Stable partitioning across batches (prevents overlap between batch 4..10)
-        const hashUrl = (s: string) => {
-          let h = 0;
-          for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-          return Math.abs(h);
-        };
-
-        const slice = queued.filter((item: any) => hashUrl(String(item.url)) % resolutionBatches === idx);
-
-        console.log(
-          `Venue resolution: ${slice.length} events (batch ${targetBatch}, bucket ${idx + 1}/${resolutionBatches}, total queued ${queued.length})`
-        );
+        console.log(`Venue resolution: ${slice.length} queued events (batch ${targetBatch})`);
 
         const events: ScrapedEvent[] = [];
         const urlsForEvents: string[] = [];
