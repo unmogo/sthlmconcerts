@@ -1319,22 +1319,43 @@ Deno.serve(async (req) => {
                 }
 
                 if (venue && isEventlyVenueAllowed(venue)) {
+                  const finalVenue = normalizeVenueName(venue);
+                  const finalTicketUrl = detail.ticket_url || item.url;
+                  const finalImageUrl = isValidImageUrl(detail.image_url)
+                    ? detail.image_url
+                    : isValidImageUrl(item.image_url)
+                      ? item.image_url
+                      : null;
+
                   events.push({
                     artist: item.artist,
-                    venue: normalizeVenueName(venue),
+                    venue: finalVenue,
                     date: item.date,
-                    ticket_url: detail.ticket_url || item.url,
+                    ticket_url: finalTicketUrl,
                     tickets_available: detail.tickets_available ?? true,
-                    image_url: isValidImageUrl(detail.image_url)
-                      ? detail.image_url
-                      : isValidImageUrl(item.image_url)
-                        ? item.image_url
-                        : null,
+                    image_url: finalImageUrl,
                     event_type: item.event_type || "concert",
                     source: "evently",
                     source_url: item.url,
                   });
                   urlsForEvents.push(item.url);
+
+                  if (isDebugUrl) {
+                    debugLog("venue_resolution_item_queued_detail", {
+                      url: item.url,
+                      venue: finalVenue,
+                      ticket_url: finalTicketUrl,
+                      detail_venue_name: detail.venue_name ?? null,
+                      detail_address: detail.address ?? null,
+                    });
+                  }
+                } else if (isDebugUrl) {
+                  debugLog("venue_resolution_item_dropped_after_detail", {
+                    url: item.url,
+                    venue_resolved: venue,
+                    detail_venue_name: detail.venue_name ?? null,
+                    detail_address: detail.address ?? null,
+                  });
                 }
               }
             } catch (e) {
