@@ -627,11 +627,10 @@ Deno.serve(async (req) => {
           console.log(`No (or too small) markdown content for ${category}`);
         }
 
-        // 2) Safety net: map all event URLs reachable from the listing to avoid the "exactly 300" cap.
-        // We queue any missing URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
+        // 2) Safety net: scrape all links from the listing (more reliable than markdown on very long pages)
+        // and queue any missing event URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
         try {
-          // Map against the *same* long listing URL; Firecrawl may normalize returned URLs (trailing slash/query).
-          const mappedLinks = await firecrawlMap(firecrawlKey, listingUrl, "/en/events/");
+          const listingLinks = await firecrawlScrapeLinks(firecrawlKey, listingUrl, 15000);
 
           const normalizeLink = (l: string) => {
             const trimmed = (l || "").trim();
@@ -656,15 +655,16 @@ Deno.serve(async (req) => {
             }
           };
 
-          const candidateUrls = (mappedLinks || [])
+          const candidateUrls = (listingLinks || [])
             .map((l) => normalizeLink(String(l)))
             .filter(Boolean)
             .map((u) => canonicalizeEventUrl(String(u))) as string[];
 
           const eventUrls = candidateUrls
             .filter((u) => u.includes("evently.se/en/events/"))
-            // URL can come back as .../260315-1930 or .../260315-1930/ (we canonicalize trailing slash away above)
             .filter((u) => /\/\d{6}-\d{4}$/.test(u));
+
+          console.log(`Evently links: extracted ${listingLinks.length} links; ${eventUrls.length} look like event URLs`);
 
           const seenUrls = new Set<string>();
           for (const e of events) seenUrls.add(e.source_url);
@@ -715,13 +715,13 @@ Deno.serve(async (req) => {
           }
 
           if (extra.length > 0) {
-            console.log(`Evently map: discovered ${eventUrls.length} event URLs; queued +${extra.length} extra items`);
+            console.log(`Evently links: queued +${extra.length} extra items`);
             unresolved = unresolved.concat(extra);
           } else {
-            console.log(`Evently map: discovered ${eventUrls.length} event URLs; no extra items needed`);
+            console.log(`Evently links: no extra items needed`);
           }
         } catch (e) {
-          console.error("Evently map failed:", e);
+          console.error("Evently links failed:", e);
         }
 
         // Store parsed events in scrape_log for resume
