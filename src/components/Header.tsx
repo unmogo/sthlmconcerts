@@ -15,7 +15,7 @@ interface HeaderProps {
   onAdd: () => void;
   deleting: boolean;
   filter: FilterType;
-  onFilterChange: (f: EventType | "all" | "favorites") => void;
+  onFilterChange: (f: FilterType) => void;
 }
 
 export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
