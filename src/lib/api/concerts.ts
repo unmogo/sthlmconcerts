@@ -69,12 +69,16 @@ export async function addConcert(concert: {
   if (error) throw error;
 }
 
-export async function scrapeUrl(url: string): Promise<any> {
+export type ScrapedConcertDraft = Partial<Pick<Concert,
+  "artist" | "venue" | "date" | "ticket_url" | "image_url" | "event_type" | "tickets_available"
+>>;
+
+export async function scrapeUrl(url: string): Promise<ScrapedConcertDraft | null> {
   const { data, error } = await supabase.functions.invoke("manage-concerts", {
     body: { action: "scrape-url", url },
   });
   if (error) throw error;
-  return data?.concert || null;
+  return (data?.concert as ScrapedConcertDraft | undefined) ?? null;
 }
 
 export function exportConcertsToCSV(concerts: Concert[]): string {
