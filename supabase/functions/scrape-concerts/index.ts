@@ -1404,7 +1404,7 @@ Deno.serve(async (req) => {
               item.url,
               detailSchema,
               "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
-              8000
+              5000
             );
 
             if (detail) {
