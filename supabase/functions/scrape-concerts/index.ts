@@ -1131,7 +1131,7 @@ Deno.serve(async (req) => {
     // ==================== EVENTLY VENUE RESOLUTION (BATCH 4-10) ====================
     // Resolve venues for Evently events that were flagged because listing pages often show "Stockholm, Sweden".
     // We spread the queue across batches 4..10 so the pipeline reliably reaches the end.
-    if (targetBatch >= 4) {
+    if (targetBatch >= 4 && targetBatch <= 8) {
       // Evently venue resolution can hit time limits, so we must (a) not drop tail chunks and
       // (b) make progress across batches/invocations without reprocessing the same URLs.
 
