@@ -1269,11 +1269,23 @@ Deno.serve(async (req) => {
            if (!progressedThisRound) break;
          }
 
-         return out.filter(Boolean);
-       })();
+          return out.filter(Boolean);
+        })();
 
-      if (debugUrlSet.size > 0) {
-        debugLog(
+       // If specific debug URLs are provided, prioritize them (and optionally only process them).
+       if (debugUrlSet.size > 0) {
+         const isDebugItem = (it: any) => debugUrlSet.has(String(it?.url || ""));
+         const debugItems = worklist.filter(isDebugItem);
+         if (debugOnly) {
+           worklist = debugItems;
+         } else if (debugItems.length > 0) {
+           const nonDebugItems = worklist.filter((it: any) => !isDebugItem(it));
+           worklist = [...debugItems, ...nonDebugItems];
+         }
+       }
+
+       if (debugUrlSet.size > 0) {
+         debugLog(
           "venue_resolution_slice_positions",
           debugUrls.map((u) => ({
             url: u,
