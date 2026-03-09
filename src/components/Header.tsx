@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import type { EventType } from "@/types/concert";
+import type { FilterType } from "@/types/concert";
 
 interface HeaderProps {
   selectedIds: string[];
