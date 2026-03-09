@@ -1233,7 +1233,7 @@ Deno.serve(async (req) => {
         const candidates = Array.from(processedUrls).filter((u) => queuedUrlSet.has(u));
         processedUrls.clear();
 
-        const CONFIRM_PAGE_SIZE = 500;
+        const CONFIRM_PAGE_SIZE = 80;
         for (let i = 0; i < candidates.length; i += CONFIRM_PAGE_SIZE) {
           const chunk = candidates.slice(i, i + CONFIRM_PAGE_SIZE);
           if (chunk.length === 0) continue;
