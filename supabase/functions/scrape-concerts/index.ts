@@ -956,12 +956,35 @@ Deno.serve(async (req) => {
     // Resolve venues for Evently events that were flagged because listing pages often show "Stockholm, Sweden".
     // We spread the queue across batches 4..10 so the pipeline reliably reaches the end.
     if (targetBatch >= 4) {
+      // Evently venue resolution can hit time limits, so we must (a) not drop tail chunks and
+      // (b) make progress across batches/invocations without reprocessing the same URLs.
+
       const { data: logEntries } = await supabase
         .from("scrape_log")
         .select("error")
         .eq("source", "evently-needs-venue")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(500);
+
+      // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
+      const { data: processedEntries } = await supabase
+        .from("scrape_log")
+        .select("error")
+        .eq("source", "evently-venue-processed")
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      const processedUrls = new Set<string>();
+      for (const entry of processedEntries || []) {
+        try {
+          const arr = JSON.parse(entry.error || "[]");
+          for (const u of arr || []) {
+            if (typeof u === "string" && u) processedUrls.add(u);
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       let queued: any[] = [];
       for (const entry of logEntries || []) {
@@ -982,11 +1005,14 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Deduplicate by url
+      // Deduplicate by url + skip already processed
       const seen = new Set<string>();
       queued = queued.filter((item: any) => {
-        if (!item?.url || seen.has(item.url)) return false;
-        seen.add(item.url);
+        const url = String(item?.url || "");
+        if (!url) return false;
+        if (processedUrls.has(url)) return false;
+        if (seen.has(url)) return false;
+        seen.add(url);
         return true;
       });
 
@@ -995,15 +1021,22 @@ Deno.serve(async (req) => {
       } else {
         const resolutionBatches = TOTAL_BATCHES - 3; // batches 4..10 inclusive
         const idx = Math.min(Math.max(targetBatch - 4, 0), resolutionBatches - 1);
-        const perBatch = Math.ceil(queued.length / resolutionBatches);
-        const start = idx * perBatch;
-        const slice = queued.slice(start, start + perBatch);
+
+        // Stable partitioning across batches (prevents overlap between batch 4..10)
+        const hashUrl = (s: string) => {
+          let h = 0;
+          for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+          return Math.abs(h);
+        };
+
+        const slice = queued.filter((item: any) => hashUrl(String(item.url)) % resolutionBatches === idx);
 
         console.log(
-          `Venue resolution: ${slice.length} events (batch ${targetBatch}, offset ${start}, total queued ${queued.length})`
+          `Venue resolution: ${slice.length} events (batch ${targetBatch}, bucket ${idx + 1}/${resolutionBatches}, total queued ${queued.length})`
         );
 
         const events: ScrapedEvent[] = [];
+        const processedThisBatch: string[] = [];
         let processed = 0;
         let errors = 0;
 
@@ -1022,7 +1055,7 @@ Deno.serve(async (req) => {
             existingVenueMap.get(dayKey) ||
             null;
 
-          if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+          if (venue && isEventlyVenueAllowed(venue)) {
             events.push({
               artist: item.artist,
               venue: normalizeVenueName(venue),
@@ -1034,6 +1067,7 @@ Deno.serve(async (req) => {
               source: "evently",
               source_url: item.url,
             });
+            processedThisBatch.push(item.url);
           } else {
             try {
               const detail = await firecrawlScrapeJson(
@@ -1041,7 +1075,7 @@ Deno.serve(async (req) => {
                 item.url,
                 detailSchema,
                 "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
-                4000
+                2000
               );
 
               if (detail) {
@@ -1055,7 +1089,7 @@ Deno.serve(async (req) => {
                   venue = existingVenueMap.get(dayKey) || null;
                 }
 
-                if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+                if (venue && isEventlyVenueAllowed(venue)) {
                   events.push({
                     artist: item.artist,
                     venue: normalizeVenueName(venue),
@@ -1071,6 +1105,7 @@ Deno.serve(async (req) => {
                     source: "evently",
                     source_url: item.url,
                   });
+                  processedThisBatch.push(item.url);
                 }
               }
             } catch (e) {
@@ -1090,7 +1125,6 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Throttle a bit, but less aggressively than before (many items are fast-path)
           if (processed % 8 === 0) await delay(500);
         }
 
@@ -1103,9 +1137,24 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Persist processed URLs so future batches/refreshes continue from the tail
+        if (processedThisBatch.length > 0) {
+          const chunkSize = 200;
+          for (let i = 0; i < processedThisBatch.length; i += chunkSize) {
+            const chunk = processedThisBatch.slice(i, i + chunkSize);
+            await supabase.from("scrape_log").insert({
+              batch: targetBatch,
+              source: "evently-venue-processed",
+              events_found: chunk.length,
+              events_upserted: chunk.length,
+              error: JSON.stringify(chunk),
+            });
+          }
+        }
+
         totalScraped += processed;
         console.log(
-          `Venue resolution done: ${processed} processed, ${totalUpserted} upserted (cumulative), ${errors} errors`
+          `Venue resolution done: ${processed} processed, +${processedThisBatch.length} progressed, ${errors} errors`
         );
       }
     }
