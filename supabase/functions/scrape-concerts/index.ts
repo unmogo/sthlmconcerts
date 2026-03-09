@@ -1213,6 +1213,17 @@ Deno.serve(async (req) => {
           return 0;
         });
 
+      if (debugUrlSet.size > 0) {
+        debugLog(
+          "venue_resolution_slice_positions",
+          debugUrls.map((u) => ({
+            url: u,
+            position_in_sorted_queue: slice.findIndex((it: any) => String(it?.url || "") === u),
+            queue_length: slice.length,
+          }))
+        );
+      }
+
       if (slice.length === 0) {
         console.log("Venue resolution: no queued events found");
       } else {
