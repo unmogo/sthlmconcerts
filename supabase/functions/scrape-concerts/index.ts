@@ -1310,12 +1310,13 @@ Deno.serve(async (req) => {
           progressed += urls.length;
         };
 
-        for (const item of worklist) {
-          if (!hasTimeBudget()) {
-            console.log(`Time budget exhausted after ${processedThisRun} events`);
-            break;
-          }
-          if (!item?.url) continue;
+
+        const FLUSH_SIZE = 50;
+        const CONCURRENCY = 5;
+
+        async function processVenueResolutionItem(item: any): Promise<{ event?: ScrapedEvent; url?: string }> {
+          if (!item?.url) return {};
+          if (!hasTimeBudget()) return {};
 
           const isDebugUrl = debugUrlSet.has(String(item.url));
           if (isDebugUrl) {
@@ -1337,55 +1338,64 @@ Deno.serve(async (req) => {
             null;
 
           if (venue && isEventlyVenueAllowed(venue)) {
-            events.push({
-              artist: item.artist,
-              venue: normalizeVenueName(venue),
-              date: item.date,
-              ticket_url: item.url,
-              tickets_available: true,
-              image_url: isValidImageUrl(item.image_url) ? item.image_url : null,
-              event_type: item.event_type || "concert",
-              source: "evently",
-              source_url: item.url,
-            });
-            urlsForEvents.push(item.url);
-            if (isDebugUrl) {
-              debugLog("venue_resolution_item_queued_fastpath", {
-                url: item.url,
+            return {
+              url: item.url,
+              event: {
+                artist: item.artist,
                 venue: normalizeVenueName(venue),
-              });
-            }
-          } else {
-            try {
-              const detail = await firecrawlScrapeJson(
-                firecrawlKey,
-                item.url,
-                detailSchema,
-                "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
-                2000
-              );
+                date: item.date,
+                ticket_url: item.url,
+                tickets_available: true,
+                image_url: isValidImageUrl(item.image_url) ? item.image_url : null,
+                event_type: item.event_type || "concert",
+                source: "evently",
+                source_url: item.url,
+              },
+            };
+          }
 
-              if (detail) {
-                if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
-                  venue = normalizeVenueName(detail.venue_name);
-                }
-                if (!venue && detail.address) {
-                  venue = resolveVenueFromAddress(detail.address);
-                }
-                if (!venue) {
-                  venue = existingVenueMap.get(dayKey) || null;
+          try {
+            const detail = await firecrawlScrapeJson(
+              firecrawlKey,
+              item.url,
+              detailSchema,
+              "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
+              8000
+            );
+
+            if (detail) {
+              if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
+                venue = normalizeVenueName(detail.venue_name);
+              }
+              if (!venue && detail.address) {
+                venue = resolveVenueFromAddress(detail.address);
+              }
+              if (!venue) {
+                venue = existingVenueMap.get(dayKey) || null;
+              }
+
+              if (venue && isEventlyVenueAllowed(venue)) {
+                const finalVenue = normalizeVenueName(venue);
+                const finalTicketUrl = detail.ticket_url || item.url;
+                const finalImageUrl = isValidImageUrl(detail.image_url)
+                  ? detail.image_url
+                  : isValidImageUrl(item.image_url)
+                    ? item.image_url
+                    : null;
+
+                if (isDebugUrl) {
+                  debugLog("venue_resolution_item_queued_detail", {
+                    url: item.url,
+                    venue: finalVenue,
+                    ticket_url: finalTicketUrl,
+                    detail_venue_name: detail.venue_name ?? null,
+                    detail_address: detail.address ?? null,
+                  });
                 }
 
-                if (venue && isEventlyVenueAllowed(venue)) {
-                  const finalVenue = normalizeVenueName(venue);
-                  const finalTicketUrl = detail.ticket_url || item.url;
-                  const finalImageUrl = isValidImageUrl(detail.image_url)
-                    ? detail.image_url
-                    : isValidImageUrl(item.image_url)
-                      ? item.image_url
-                      : null;
-
-                  events.push({
+                return {
+                  url: item.url,
+                  event: {
                     artist: item.artist,
                     venue: finalVenue,
                     date: item.date,
@@ -1395,39 +1405,48 @@ Deno.serve(async (req) => {
                     event_type: item.event_type || "concert",
                     source: "evently",
                     source_url: item.url,
-                  });
-                  urlsForEvents.push(item.url);
-
-                  if (isDebugUrl) {
-                    debugLog("venue_resolution_item_queued_detail", {
-                      url: item.url,
-                      venue: finalVenue,
-                      ticket_url: finalTicketUrl,
-                      detail_venue_name: detail.venue_name ?? null,
-                      detail_address: detail.address ?? null,
-                    });
-                  }
-                } else if (isDebugUrl) {
-                  debugLog("venue_resolution_item_dropped_after_detail", {
-                    url: item.url,
-                    venue_resolved: venue,
-                    detail_venue_name: detail.venue_name ?? null,
-                    detail_address: detail.address ?? null,
-                  });
-                }
+                  },
+                };
+              } else if (isDebugUrl) {
+                debugLog("venue_resolution_item_dropped_after_detail", {
+                  url: item.url,
+                  venue_resolved: venue,
+                  detail_venue_name: detail.venue_name ?? null,
+                  detail_address: detail.address ?? null,
+                });
               }
-            } catch (e) {
-              errors++;
-              console.error(`Detail scrape failed for ${item.artist}: ${e?.message || e}`);
+            }
+          } catch (e) {
+            errors++;
+            console.error(`Detail scrape failed for ${item.artist}: ${e?.message || e}`);
+          }
+
+          return {};
+        }
+
+        for (let start = 0; start < worklist.length; start += CONCURRENCY) {
+          if (!hasTimeBudget()) {
+            console.log(`Time budget exhausted after ${processedThisRun} events`);
+            break;
+          }
+
+          const batch = worklist.slice(start, start + CONCURRENCY).filter((it: any) => it?.url);
+          if (batch.length === 0) continue;
+
+          const results = await Promise.all(batch.map(processVenueResolutionItem));
+          processedThisRun += batch.length;
+
+          for (const r of results) {
+            if (r.event && r.url) {
+              events.push(r.event);
+              urlsForEvents.push(r.url);
             }
           }
 
-          processedThisRun++;
-
-          // Flush every 20 to persist progress even if the HTTP request is cancelled.
-          while (events.length >= 20) {
-            const chunkEvents = events.splice(0, 20);
-            const chunkUrls = urlsForEvents.splice(0, 20);
+          // Flush in larger batches to keep DB writes efficient and to make faster progress per invocation.
+          while (events.length >= FLUSH_SIZE) {
+            const chunkEvents = events.splice(0, FLUSH_SIZE);
+            const chunkUrls = urlsForEvents.splice(0, FLUSH_SIZE);
             try {
               await upsertEvents(chunkEvents);
               await persistProcessedUrls(chunkUrls);
@@ -1435,9 +1454,8 @@ Deno.serve(async (req) => {
               console.error(`Batch upsert failed: ${e?.message || e}`);
             }
           }
-
-          if (processedThisRun % 8 === 0) await delay(500);
         }
+
 
         // Upsert remaining events + persist remaining processed URLs
         if (events.length > 0) {
