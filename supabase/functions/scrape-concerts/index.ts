@@ -193,6 +193,15 @@ function isStockholmVenue(venue: string): boolean {
   return STOCKHOLM_VENUE_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
+// Evently listing is already scoped to Stockholm, so we accept venues we don't recognize
+// (but still reject obviously non-Stockholm venues and invalid placeholders).
+function isEventlyVenueAllowed(venue: string): boolean {
+  const lower = venue.toLowerCase();
+  if (isInvalidVenue(venue)) return false;
+  if (NON_STOCKHOLM_VENUES.some(v => lower.includes(v))) return false;
+  return true;
+}
+
 function isValidTicketUrl(url: string | undefined | null): boolean {
   if (!url) return false;
   const lower = url.toLowerCase();
