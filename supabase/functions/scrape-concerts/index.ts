@@ -782,6 +782,37 @@ Deno.serve(async (req) => {
           } else {
             console.log(`Evently links: no extra items needed`);
           }
+
+          if (debugUrlSet.size > 0) {
+            const extraUrlSet = new Set<string>();
+            for (const raw of extra) {
+              try {
+                const obj = JSON.parse(raw);
+                if (obj?.url) extraUrlSet.add(canonicalizeEventUrl(String(obj.url)));
+              } catch {
+                // ignore
+              }
+            }
+
+            const unresolvedFinalUrlSet = new Set<string>();
+            for (const raw of unresolved) {
+              try {
+                const obj = JSON.parse(raw);
+                if (obj?.url) unresolvedFinalUrlSet.add(canonicalizeEventUrl(String(obj.url)));
+              } catch {
+                // ignore
+              }
+            }
+
+            debugLog(
+              `evently_${category}_post_extra`,
+              debugUrls.map((u) => ({
+                url: u,
+                queued_as_extra: extraUrlSet.has(u),
+                in_unresolved_final: unresolvedFinalUrlSet.has(u),
+              }))
+            );
+          }
         } catch (e) {
           console.error("Evently links failed:", e);
         }
