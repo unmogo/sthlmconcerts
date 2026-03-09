@@ -451,10 +451,11 @@ Deno.serve(async (req) => {
   let totalUpserted = 0;
   let supabase: any = null;
 
-  // Optional debug mode: pass { debug: { urls: string[] } } in the request body
+  // Optional debug mode: pass { debug: { urls: string[], only?: boolean } } in the request body
   // to trace whether specific Evently URLs are present in the needs-venue queue,
   // filtered as processed, and/or selected for processing.
   let debugUrls: string[] = [];
+  let debugOnly = false;
   const canonicalizeUrl = (raw: string) => {
     try {
       const u = new URL(raw);
