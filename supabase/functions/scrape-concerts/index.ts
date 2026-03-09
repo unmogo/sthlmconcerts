@@ -451,11 +451,35 @@ Deno.serve(async (req) => {
   let totalUpserted = 0;
   let supabase: any = null;
 
+  // Optional debug mode: pass { debug: { urls: string[] } } in the request body
+  // to trace whether specific Evently URLs are present in the needs-venue queue,
+  // filtered as processed, and/or selected for processing.
+  let debugUrls: string[] = [];
+  const canonicalizeUrl = (raw: string) => {
+    try {
+      const u = new URL(raw);
+      u.hash = "";
+      u.search = "";
+      let s = u.toString();
+      if (s.endsWith("/")) s = s.slice(0, -1);
+      return s;
+    } catch {
+      let s = String(raw || "").split("#")[0].split("?")[0];
+      if (s.endsWith("/")) s = s.slice(0, -1);
+      return s;
+    }
+  };
+  const debugUrlSet = new Set<string>();
+
   try {
     try {
       const body = await req.json();
       if (body?.batch) targetBatch = Number(body.batch);
       if (body?.chain !== undefined) chainRequested = Boolean(body.chain);
+      if (Array.isArray(body?.debug?.urls)) {
+        debugUrls = body.debug.urls.map((u: any) => canonicalizeUrl(String(u)));
+        for (const u of debugUrls) debugUrlSet.add(u);
+      }
     } catch {
       chainRequested = true;
     }
