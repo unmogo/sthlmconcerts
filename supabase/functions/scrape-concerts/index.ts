@@ -1182,7 +1182,8 @@ Deno.serve(async (req) => {
       const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 1200);
       // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
       const processedUrls = new Set<string>();
-      for (const raw of processedEntryErrors) {
+      for (const row of processedEntryErrors) {
+        const raw = row.error;
         try {
           const arr = JSON.parse(raw || "[]");
           for (const u of arr || []) {
@@ -1194,13 +1195,18 @@ Deno.serve(async (req) => {
       }
 
       let queued: any[] = [];
-      for (const raw of logEntryErrors) {
+      for (const row of logEntryErrors) {
+        const raw = row.error;
         try {
           const parsed = JSON.parse(raw || "[]");
           const items = parsed
             .map((item: string) => {
               try {
-                return JSON.parse(item);
+                const p = JSON.parse(item);
+                if (p && typeof p === "object") {
+                  (p as any).__queued_at = row.created_at || null;
+                }
+                return p;
               } catch {
                 return null;
               }
