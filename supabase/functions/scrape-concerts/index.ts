@@ -6,9 +6,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const START_TIME = Date.now();
 const TIME_BUDGET_MS = 240_000;
-const hasTimeBudget = () => Date.now() - START_TIME < TIME_BUDGET_MS;
+
+function createTimeBudget() {
+  const startTime = Date.now();
+  return {
+    startTime,
+    hasTimeBudget: () => Date.now() - startTime < TIME_BUDGET_MS,
+  };
+}
+
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ==================== NORMALIZATION ====================
@@ -135,6 +142,24 @@ function normalizeVenueName(venue: string): string {
   const fromAddress = resolveVenueFromAddress(venue);
   if (fromAddress) return fromAddress;
   return venue.replace(/,\s*(stockholm|sweden|sverige)$/i, "").trim();
+}
+
+function resolveVenueFromEventlyUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split("/").filter(Boolean);
+    // Evently URLs usually look like /en/events/<id>/<slug>/<date-time>
+    const slug = parts.length >= 2 ? parts[parts.length - 2] : parts[parts.length - 1];
+    if (!slug) return null;
+
+    const slugText = slug.replace(/[-_]+/g, " ");
+    const candidate = normalizeVenueName(slugText);
+    if (candidate && !isInvalidVenue(candidate) && isStockholmVenue(candidate)) return candidate;
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 const STOCKHOLM_VENUE_KEYWORDS = [
@@ -376,8 +401,11 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const { startTime, hasTimeBudget } = createTimeBudget();
+
   let targetBatch = 1;
-  let chain = false;
+  let chainRequested = false;
+  let chainedAlready = false;
   let totalScraped = 0;
   let totalUpserted = 0;
   let supabase: any = null;
@@ -386,8 +414,10 @@ Deno.serve(async (req) => {
     try {
       const body = await req.json();
       if (body?.batch) targetBatch = Number(body.batch);
-      if (body?.chain) chain = Boolean(body.chain);
-    } catch { chain = true; }
+      if (body?.chain !== undefined) chainRequested = Boolean(body.chain);
+    } catch {
+      chainRequested = true;
+    }
 
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
     if (!firecrawlKey) {
@@ -397,6 +427,11 @@ Deno.serve(async (req) => {
 
     supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    // Chain early for long-running batches so the pipeline continues even if this batch hits a hard timeout.
+    if (chainRequested && targetBatch >= 4) {
+      await triggerNextBatch(targetBatch, supabase);
+      chainedAlready = true;
+    }
     // Load deleted concerts
     const { data: deletedConcerts } = await supabase.from("deleted_concerts").select("artist, venue, date");
     const deletedKeys = new Set(
@@ -483,7 +518,7 @@ Deno.serve(async (req) => {
       console.log(`Upserted ${count}/${events.length}`);
     }
 
-    console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chain}) ===`);
+    console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chainRequested}) ===`);
 
     // ==================== BATCH 1-3: EVENTLY (SINGLE PAGE=60, RESUME FROM OFFSET) ====================
     if (targetBatch >= 1 && targetBatch <= 3) {
@@ -808,10 +843,10 @@ Deno.serve(async (req) => {
       console.log(`Evently batch ${targetBatch}: scraped=${totalScraped}, upserted=${totalUpserted}`);
     }
 
-    // ==================== BATCH 4-5: EVENTLY VENUE RESOLUTION ====================
-    // Scrape detail pages for events that need venue resolution
-    if (targetBatch >= 4 && targetBatch <= 5) {
-      // Load ALL unresolved events (both music and comedy entries)
+    // ==================== EVENTLY VENUE RESOLUTION (BATCH 4-10) ====================
+    // Resolve venues for Evently events that were flagged because listing pages often show "Stockholm, Sweden".
+    // We spread the queue across batches 4..10 so the pipeline reliably reaches the end.
+    if (targetBatch >= 4) {
       const { data: logEntries } = await supabase
         .from("scrape_log")
         .select("error")
@@ -820,12 +855,18 @@ Deno.serve(async (req) => {
         .limit(10);
 
       let queued: any[] = [];
-      for (const entry of (logEntries || [])) {
+      for (const entry of logEntries || []) {
         try {
           const parsed = JSON.parse(entry.error || "[]");
-          const items = parsed.map((item: string) => {
-            try { return JSON.parse(item); } catch { return null; }
-          }).filter(Boolean);
+          const items = parsed
+            .map((item: string) => {
+              try {
+                return JSON.parse(item);
+              } catch {
+                return null;
+              }
+            })
+            .filter(Boolean);
           queued = queued.concat(items);
         } catch (e) {
           console.error("Failed to parse needs-venue entry:", e);
@@ -835,90 +876,129 @@ Deno.serve(async (req) => {
       // Deduplicate by url
       const seen = new Set<string>();
       queued = queued.filter((item: any) => {
-        if (!item.url || seen.has(item.url)) return false;
+        if (!item?.url || seen.has(item.url)) return false;
         seen.add(item.url);
         return true;
       });
 
-      // Split into 2 batches: batch 4 = first half, batch 5 = second half
-      const half = Math.ceil(queued.length / 2);
-      const start = (targetBatch - 4) * half;
-      const slice = queued.slice(start, start + half);
-      console.log(`Venue resolution: ${slice.length} events (batch ${targetBatch}, offset ${start}, total queued ${queued.length})`);
+      if (queued.length === 0) {
+        console.log("Venue resolution: no queued events found");
+      } else {
+        const resolutionBatches = TOTAL_BATCHES - 3; // batches 4..10 inclusive
+        const idx = Math.min(Math.max(targetBatch - 4, 0), resolutionBatches - 1);
+        const perBatch = Math.ceil(queued.length / resolutionBatches);
+        const start = idx * perBatch;
+        const slice = queued.slice(start, start + perBatch);
 
-      const events: ScrapedEvent[] = [];
-      let processed = 0;
-      let errors = 0;
+        console.log(
+          `Venue resolution: ${slice.length} events (batch ${targetBatch}, offset ${start}, total queued ${queued.length})`
+        );
 
-      for (const item of slice) {
-        if (!hasTimeBudget()) {
-          console.log(`Time budget exhausted after ${processed} events`);
-          break;
-        }
-        if (!item.url) continue;
+        const events: ScrapedEvent[] = [];
+        let processed = 0;
+        let errors = 0;
 
-        try {
-          const detail = await firecrawlScrapeJson(
-            firecrawlKey, item.url, detailSchema,
-            "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
-            5000
-          );
+        for (const item of slice) {
+          if (!hasTimeBudget()) {
+            console.log(`Time budget exhausted after ${processed} events`);
+            break;
+          }
+          if (!item?.url) continue;
 
-          if (detail) {
-            let venue: string | null = null;
+          const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
 
-            if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
-              venue = normalizeVenueName(detail.venue_name);
-            }
-            if (!venue && detail.address) {
-              venue = resolveVenueFromAddress(detail.address);
-            }
-            if (!venue) {
-              const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
-              venue = existingVenueMap.get(dayKey) || null;
-            }
+          // Fast-path: resolve via URL slug or by matching existing same-day venues (no Firecrawl call).
+          let venue: string | null =
+            resolveVenueFromEventlyUrl(item.url) ||
+            existingVenueMap.get(dayKey) ||
+            null;
 
-            if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
-              events.push({
-                artist: item.artist,
-                venue,
-                date: item.date,
-                ticket_url: detail.ticket_url || item.url,
-                tickets_available: detail.tickets_available ?? true,
-                image_url: isValidImageUrl(detail.image_url) ? detail.image_url : (isValidImageUrl(item.image_url) ? item.image_url : null),
-                event_type: item.event_type || "concert",
-                source: "evently",
-                source_url: item.url,
-              });
+          if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+            events.push({
+              artist: item.artist,
+              venue: normalizeVenueName(venue),
+              date: item.date,
+              ticket_url: item.url,
+              tickets_available: true,
+              image_url: isValidImageUrl(item.image_url) ? item.image_url : null,
+              event_type: item.event_type || "concert",
+              source: "evently",
+              source_url: item.url,
+            });
+          } else {
+            try {
+              const detail = await firecrawlScrapeJson(
+                firecrawlKey,
+                item.url,
+                detailSchema,
+                "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
+                4000
+              );
+
+              if (detail) {
+                if (detail.venue_name && !isInvalidVenue(detail.venue_name)) {
+                  venue = normalizeVenueName(detail.venue_name);
+                }
+                if (!venue && detail.address) {
+                  venue = resolveVenueFromAddress(detail.address);
+                }
+                if (!venue) {
+                  venue = existingVenueMap.get(dayKey) || null;
+                }
+
+                if (venue && !isInvalidVenue(venue) && isStockholmVenue(venue)) {
+                  events.push({
+                    artist: item.artist,
+                    venue: normalizeVenueName(venue),
+                    date: item.date,
+                    ticket_url: detail.ticket_url || item.url,
+                    tickets_available: detail.tickets_available ?? true,
+                    image_url: isValidImageUrl(detail.image_url)
+                      ? detail.image_url
+                      : isValidImageUrl(item.image_url)
+                        ? item.image_url
+                        : null,
+                    event_type: item.event_type || "concert",
+                    source: "evently",
+                    source_url: item.url,
+                  });
+                }
+              }
+            } catch (e) {
+              errors++;
+              console.error(`Detail scrape failed for ${item.artist}: ${e?.message || e}`);
             }
           }
-        } catch (e) {
-          errors++;
-          console.error(`Detail scrape failed for ${item.artist}: ${e.message || e}`);
+
+          processed++;
+
+          // Batch upsert every 20 events to avoid losing progress
+          if (events.length >= 20) {
+            try {
+              await upsertEvents(events.splice(0, events.length));
+            } catch (e) {
+              console.error(`Batch upsert failed: ${e?.message || e}`);
+            }
+          }
+
+          // Throttle a bit, but less aggressively than before (many items are fast-path)
+          if (processed % 8 === 0) await delay(500);
         }
 
-        processed++;
-        // Batch upsert every 20 events to avoid losing progress
-        if (events.length >= 20) {
+        // Upsert remaining events
+        if (events.length > 0) {
           try {
-            await upsertEvents(events.splice(0, events.length));
+            await upsertEvents(events);
           } catch (e) {
-            console.error(`Batch upsert failed: ${e.message || e}`);
+            console.error(`Final upsert failed: ${e?.message || e}`);
           }
         }
-        if (processed % 5 === 0) await delay(1000);
-      }
 
-      // Upsert remaining events
-      if (events.length > 0) {
-        try {
-          await upsertEvents(events);
-        } catch (e) {
-          console.error(`Final upsert failed: ${e.message || e}`);
-        }
+        totalScraped += processed;
+        console.log(
+          `Venue resolution done: ${processed} processed, ${totalUpserted} upserted (cumulative), ${errors} errors`
+        );
       }
-      totalScraped = processed;
-      console.log(`Venue resolution done: ${processed} processed, ${totalUpserted} upserted, ${errors} errors`);
     }
 
     // ==================== BATCH 6: VENUE-SPECIFIC SOURCES ====================
@@ -1136,17 +1216,20 @@ Deno.serve(async (req) => {
         .or("venue.ilike.%example.com%,ticket_url.ilike.%example.com%");
     }
 
-    // Chain FIRST so next batch starts even if upsert is slow
-    if (chain) await triggerNextBatch(targetBatch, supabase);
+    // Chain at the end for quick batches (1-3); long batches (4+) already chained early.
+    if (chainRequested && !chainedAlready) {
+      await triggerNextBatch(targetBatch, supabase);
+      chainedAlready = true;
+    }
 
     // Log this batch
-    const elapsed = Math.round((Date.now() - START_TIME) / 1000);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
     await supabase.from("scrape_log").insert({
       batch: targetBatch,
       source: targetBatch <= 3 ? "evently-listing" : targetBatch <= 5 ? "evently-detail" : `secondary-${targetBatch}`,
       events_found: totalScraped,
       events_upserted: totalUpserted,
-      duration_ms: Date.now() - START_TIME,
+      duration_ms: Date.now() - startTime,
     });
 
     const message = `Batch ${targetBatch}: scraped=${totalScraped}, upserted=${totalUpserted} (${elapsed}s)`;
@@ -1160,19 +1243,21 @@ Deno.serve(async (req) => {
 
     // CRITICAL: Always chain to next batch even on error so pipeline doesn't break
     try {
-      if (chain && supabase) {
+      if (chainRequested && supabase && !chainedAlready) {
         console.log(`Error recovery: chaining to batch ${targetBatch + 1} despite error`);
         await triggerNextBatch(targetBatch, supabase);
+        chainedAlready = true;
       }
       // Log the failed batch
       if (supabase) {
+        const msg = err instanceof Error ? err.message : String(err);
         await supabase.from("scrape_log").insert({
           batch: targetBatch,
           source: targetBatch <= 3 ? "evently-listing" : targetBatch <= 5 ? "evently-detail" : `secondary-${targetBatch}`,
           events_found: totalScraped,
           events_upserted: totalUpserted,
-          duration_ms: Date.now() - START_TIME,
-          error: String(err.message || err).slice(0, 500),
+          duration_ms: Date.now() - startTime,
+          error: msg.slice(0, 500),
         });
       }
     } catch (chainErr) {
