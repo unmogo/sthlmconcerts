@@ -91,28 +91,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
           </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-1">
-          {([
-            { value: "all" as const, label: "All", icon: Sparkles },
-            { value: "concert" as const, label: "Concerts", icon: Music },
-            { value: "comedy" as const, label: "Comedy", icon: Laugh },
-            ...(user ? [{ value: "favorites" as const, label: "Favourites", icon: Heart }] : []),
-          ]).map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              onClick={() => onFilterChange(value)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-                filter === value
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
+        <FilterTabs filter={filter} onFilterChange={onFilterChange} showFavorites={!!user} />
 
         <div className="flex items-center gap-2">
           {/* Admin-only: selection actions */}
