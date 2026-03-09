@@ -40,6 +40,12 @@ export async function triggerFetchImages(): Promise<{ success: boolean; message:
   return data;
 }
 
+export async function triggerResolveTickets(): Promise<{ success: boolean; message: string }> {
+  const { data, error } = await supabase.functions.invoke("resolve-tickets");
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteConcerts(ids: string[]): Promise<void> {
   const { error } = await supabase.functions.invoke("manage-concerts", {
     body: { action: "delete", ids },
