@@ -1,5 +1,5 @@
 import { Music } from "lucide-react";
-import { triggerScrape, triggerFetchImages } from "@/lib/api/concerts";
+import { triggerScrape, triggerFetchImages, triggerResolveTickets } from "@/lib/api/concerts";
 import { useState } from "react";
 import { ScrapeLogDashboard } from "./ScrapeLogDashboard";
 import { FilterTabs } from "./header/FilterTabs";
