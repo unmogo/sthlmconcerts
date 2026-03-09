@@ -1241,7 +1241,7 @@ Deno.serve(async (req) => {
 
        // Fair scheduling: the queue can be huge (10k+), and strict date-order processing starves late-year events.
        // Build a month-bucketed round-robin worklist so each invocation touches *all* months (including late 2026).
-       const worklist = (() => {
+       let worklist = (() => {
          if (slice.length <= 1) return slice;
 
          const monthBuckets = new Map<string, any[]>();
