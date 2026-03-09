@@ -287,12 +287,40 @@ async function firecrawlScrapeMarkdown(apiKey: string, url: string, waitFor = 50
     });
     clearTimeout(timeout);
     const data = await response.json();
-    if (!response.ok) { console.error(`Firecrawl error for ${url}:`, data); return null; }
+    if (!response.ok) {
+      console.error(`Firecrawl error for ${url}:`, data);
+      return null;
+    }
     return data?.data?.markdown || data?.markdown || null;
   } catch (err) {
     clearTimeout(timeout);
     console.error(`Firecrawl fetch error for ${url}:`, err);
     return null;
+  }
+}
+
+async function firecrawlScrapeLinks(apiKey: string, url: string, waitFor = 5000): Promise<string[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      // `links` often contains more complete coverage than markdown when pages are long / truncated.
+      body: JSON.stringify({ url, formats: ["links"], onlyMainContent: false, waitFor }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (!response.ok) {
+      console.error(`Firecrawl links error for ${url}:`, data);
+      return [];
+    }
+    return (data?.data?.links || data?.links || []) as string[];
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`Firecrawl links fetch error for ${url}:`, err);
+    return [];
   }
 }
 
