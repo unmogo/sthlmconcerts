@@ -1744,7 +1744,7 @@ Deno.serve(async (req) => {
         await delay(2000);
       }
 
-      // Resident Advisor — scrape pages 1-3 explicitly for fuller coverage
+      // Resident Advisor — scrape pages 1–3 explicitly and verify coverage vs live listing links
       if (hasTimeBudget()) {
         const raSchema = {
           type: "object",
@@ -1757,7 +1757,7 @@ Deno.serve(async (req) => {
                   artist: { type: "string", description: "Main artist/DJ name or event title" },
                   venue: { type: "string", description: "Venue name" },
                   date: { type: "string", description: "Event date in ISO 8601" },
-                  ticket_url: { type: "string", description: "Ticket URL or event page URL" },
+                  ticket_url: { type: "string", description: "Event page URL (preferred) or ticket URL" },
                   image_url: { type: "string", description: "Event image URL" },
                 },
                 required: ["artist", "venue", "date"],
@@ -1773,47 +1773,121 @@ Deno.serve(async (req) => {
           "https://ra.co/events/se/stockholm?page=3",
         ];
 
+        const isRaVenueAllowed = (venue: string) => {
+          if (isInvalidVenue(venue)) return false;
+          const lower = venue.toLowerCase();
+          if (NON_STOCKHOLM_VENUES.some((v) => lower.includes(v))) return false;
+          return true; // RA is already Stockholm-scoped
+        };
+
+        const normalizeRaEventUrl = (raw: string, baseOrigin: string): string | null => {
+          try {
+            const abs = raw.startsWith("/") ? `${baseOrigin}${raw}` : raw;
+            const u = new URL(abs);
+            if (u.hostname !== "ra.co") return null;
+            const match = u.pathname.match(/^\/events\/(\d+)/);
+            if (!match) return null;
+            return `https://ra.co/events/${match[1]}`;
+          } catch {
+            return null;
+          }
+        };
+
         const raEvents: ScrapedEvent[] = [];
         const raSeenKeys = new Set<string>();
 
-        for (const raPageUrl of raPages) {
+        for (let i = 0; i < raPages.length; i++) {
+          const raPageUrl = raPages[i];
           if (!hasTimeBudget()) break;
+
+          const pageStart = Date.now();
           console.log(`Gap-fill: Resident Advisor (${raPageUrl})`);
 
-          const raResult = await firecrawlScrapeJson(
-            firecrawlKey,
-            raPageUrl,
-            raSchema,
-            "Extract ALL music events/DJ nights listed on this page. For each: artist or event name, venue name, date (ISO 8601, 2026), ticket/event URL, image URL. Stockholm only.",
-            12000
+          // "Live" count: number of unique event links on the listing page (pages 1–3)
+          const pageLinks = await firecrawlScrapeLinks(firecrawlKey, raPageUrl, 15000);
+          const baseOrigin = (() => {
+            try {
+              return new URL(raPageUrl).origin;
+            } catch {
+              return "https://ra.co";
+            }
+          })();
+          const liveEventLinks = Array.from(
+            new Set(
+              pageLinks
+                .map((l) => normalizeRaEventUrl(l, baseOrigin))
+                .filter((l): l is string => Boolean(l)),
+            ),
           );
+          const liveCount = liveEventLinks.length;
 
-          const pageEvents: ScrapedEvent[] = (raResult?.events || [])
-            .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
-            .map((e: any) => ({
-              artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue),
-              date: e.date,
-              ticket_url: e.ticket_url || null,
-              tickets_available: true,
-              image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
-              event_type: "concert",
-              source: "Resident Advisor",
-              source_url: e.ticket_url || raPageUrl,
-            }))
-            .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
+          const runExtractionPass = async (passLabel: string, waitFor: number) => {
+            if (!hasTimeBudget()) return 0;
 
-          let accepted = 0;
-          for (const e of pageEvents) {
-            const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
-            if (raSeenKeys.has(key)) continue;
-            raSeenKeys.add(key);
-            raEvents.push(e);
-            accepted++;
+            const raResult = await firecrawlScrapeJson(
+              firecrawlKey,
+              raPageUrl,
+              raSchema,
+              `Extract ALL events listed on this Resident Advisor Stockholm listing page (no omissions).\n- Return one item per visible event card\n- Use year 2026 when year is not shown\n- Provide the RA event page URL in ticket_url when possible\n- Venue must be the on-card venue name\n(Validation hint: the page has approximately ${liveCount || "?"} event links.)`,
+              waitFor,
+              false,
+            );
+
+            const pageEvents: ScrapedEvent[] = (raResult?.events || [])
+              .filter((e: any) => e.artist && e.venue && e.date)
+              .map((e: any) => {
+                const ticketUrl = isValidTicketUrl(e.ticket_url) ? e.ticket_url : null;
+                const venue = normalizeVenueName(String(e.venue));
+                return {
+                  artist: String(e.artist).split(/[:\-–—|]/)[0].trim(),
+                  venue,
+                  date: String(e.date),
+                  ticket_url: ticketUrl,
+                  tickets_available: true,
+                  image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
+                  event_type: "concert",
+                  source: "Resident Advisor",
+                  source_url: ticketUrl || raPageUrl,
+                };
+              })
+              .filter((e: ScrapedEvent) => isRaVenueAllowed(e.venue));
+
+            let accepted = 0;
+            for (const e of pageEvents) {
+              const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
+              if (raSeenKeys.has(key)) continue;
+              raSeenKeys.add(key);
+              raEvents.push(e);
+              accepted++;
+            }
+
+            console.log(`Resident Advisor (${raPageUrl}) ${passLabel}: +${accepted} accepted`);
+            return accepted;
+          };
+
+          let acceptedTotal = 0;
+          acceptedTotal += await runExtractionPass("pass1", 15000);
+
+          // Retry once if we appear to be missing events vs the live link count.
+          if (liveCount > 0 && acceptedTotal < liveCount) {
+            console.warn(
+              `Resident Advisor coverage warning (${raPageUrl}): extracted=${acceptedTotal} live=${liveCount} — retrying`,
+            );
+            acceptedTotal += await runExtractionPass("pass2", 22000);
           }
 
-          console.log(`Resident Advisor (${raPageUrl}): ${accepted} events`);
-          await delay(1200);
+          const mismatch = liveCount > 0 && acceptedTotal < liveCount;
+          await supabase.from("scrape_log").insert({
+            batch: targetBatch,
+            source: `resident-advisor-p${i + 1}`,
+            events_found: liveCount || null,
+            events_upserted: acceptedTotal,
+            duration_ms: Date.now() - pageStart,
+            error: mismatch ? `coverage_mismatch live=${liveCount} extracted=${acceptedTotal}` : null,
+          });
+
+          console.log(`Resident Advisor (${raPageUrl}): accepted=${acceptedTotal} live=${liveCount}`);
+          await delay(1500);
         }
 
         if (raEvents.length > 0) {
