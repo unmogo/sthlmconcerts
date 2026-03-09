@@ -144,6 +144,24 @@ function normalizeVenueName(venue: string): string {
   return venue.replace(/,\s*(stockholm|sweden|sverige)$/i, "").trim();
 }
 
+function resolveVenueFromEventlyUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split("/").filter(Boolean);
+    // Evently URLs usually look like /en/events/<id>/<slug>/<date-time>
+    const slug = parts.length >= 2 ? parts[parts.length - 2] : parts[parts.length - 1];
+    if (!slug) return null;
+
+    const slugText = slug.replace(/[-_]+/g, " ");
+    const candidate = normalizeVenueName(slugText);
+    if (candidate && !isInvalidVenue(candidate) && isStockholmVenue(candidate)) return candidate;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 const STOCKHOLM_VENUE_KEYWORDS = [
   "stockholm", "gröna lund", "grona lund", "cirkus", "globen", "avicii arena",
   "hovet", "strawberry arena", "konserthuset", "södra teatern", "sodra teatern",
