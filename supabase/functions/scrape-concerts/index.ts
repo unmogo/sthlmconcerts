@@ -308,8 +308,12 @@ async function firecrawlMap(apiKey: string, url: string, search?: string): Promi
     });
     clearTimeout(timeout);
     const data = await response.json();
-    if (!response.ok) { console.error("Firecrawl map error:", data); return []; }
-    return data?.links || [];
+    if (!response.ok) {
+      console.error("Firecrawl map error:", data);
+      return [];
+    }
+    // Firecrawl responses sometimes nest under `data` (similar to scrape).
+    return data?.links || data?.data?.links || [];
   } catch (err) {
     clearTimeout(timeout);
     console.error("Firecrawl map failed:", err);
