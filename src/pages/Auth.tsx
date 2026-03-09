@@ -42,10 +42,11 @@ export default function Auth() {
           description: "Check your email for a password reset link.",
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong";
       toast({
         title: "Error",
-        description: err.message,
+        description: message,
         variant: "destructive",
       });
     } finally {

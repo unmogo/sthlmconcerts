@@ -107,9 +107,7 @@ const getGroupingKey = (concert: Concert): string => {
     (isRecurringComedySeries(concert.artist) || isLikelyComedySeriesTitle(concert.artist));
 
   if (shouldGroupComedyByTitleOnly) {
-    let key = normalizedArtist;
-    if (key.includes("maffia comedy")) key = "maffia comedy superweekend";
-    if (key.includes("raw sthlm") || key.includes("raw comedy")) key = "raw sthlm";
+    const key = canonicalComedySeriesKey(normalizedArtist);
     return `recurring:${key}`;
   }
 
