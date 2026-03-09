@@ -1187,6 +1187,17 @@ Deno.serve(async (req) => {
         return true;
       });
 
+      if (debugUrlSet.size > 0) {
+        debugLog(
+          "venue_resolution_queue_state",
+          debugUrls.map((u) => ({
+            url: u,
+            in_processed: processedUrls.has(u),
+            in_queue_after_dedupe: queued.some((it: any) => String(it?.url || "") === u),
+          }))
+        );
+      }
+
       // CRITICAL FIX:
       // Do NOT partition by batch number; in practice only batch 4 may run reliably,
       // and partitioning strands some URLs forever (e.g. the far-future “tail” links).
