@@ -1213,12 +1213,27 @@ Deno.serve(async (req) => {
           return 0;
         });
 
+      // Fair scheduling: process mostly near-term items, but always pull some from the far-future tail
+      // so “bottom of the list” URLs don't get starved forever.
+      const worklist = (() => {
+        if (slice.length <= 1) return slice;
+        const out: any[] = [];
+        let i = 0;
+        let j = slice.length - 1;
+        while (i <= j) {
+          for (let k = 0; k < 3 && i <= j; k++) out.push(slice[i++]);
+          if (i <= j) out.push(slice[j--]);
+        }
+        return out;
+      })();
+
       if (debugUrlSet.size > 0) {
         debugLog(
           "venue_resolution_slice_positions",
           debugUrls.map((u) => ({
             url: u,
             position_in_sorted_queue: slice.findIndex((it: any) => String(it?.url || "") === u),
+            position_in_worklist: worklist.findIndex((it: any) => String(it?.url || "") === u),
             queue_length: slice.length,
           }))
         );
