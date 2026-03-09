@@ -470,6 +470,14 @@ Deno.serve(async (req) => {
     }
   };
   const debugUrlSet = new Set<string>();
+  const debugLog = (label: string, data: unknown) => {
+    if (debugUrlSet.size === 0) return;
+    try {
+      console.log(`DEBUG:${label} ${JSON.stringify(data)}`);
+    } catch {
+      console.log(`DEBUG:${label}`, data);
+    }
+  };
 
   try {
     try {
@@ -696,6 +704,30 @@ Deno.serve(async (req) => {
 
           console.log(`Evently links: extracted ${listingLinks.length} links; ${eventUrls.length} look like event URLs`);
 
+          if (debugUrlSet.size > 0) {
+            const eventUrlSet = new Set(eventUrls);
+            const parsedUrlSet = new Set(events.map((e) => canonicalizeEventUrl(e.source_url)));
+            const unresolvedUrlSet = new Set<string>();
+            for (const raw of unresolved) {
+              try {
+                const obj = JSON.parse(raw);
+                if (obj?.url) unresolvedUrlSet.add(canonicalizeEventUrl(String(obj.url)));
+              } catch {
+                // ignore
+              }
+            }
+
+            debugLog(
+              `evently_${category}_listing_presence`,
+              debugUrls.map((u) => ({
+                url: u,
+                in_listing_links: eventUrlSet.has(u),
+                in_parsed_with_venue: parsedUrlSet.has(u),
+                in_unresolved_pre_extra: unresolvedUrlSet.has(u),
+              }))
+            );
+          }
+
           const seenUrls = new Set<string>();
           for (const e of events) seenUrls.add(e.source_url);
           for (const raw of unresolved) {
@@ -749,6 +781,37 @@ Deno.serve(async (req) => {
             unresolved = unresolved.concat(extra);
           } else {
             console.log(`Evently links: no extra items needed`);
+          }
+
+          if (debugUrlSet.size > 0) {
+            const extraUrlSet = new Set<string>();
+            for (const raw of extra) {
+              try {
+                const obj = JSON.parse(raw);
+                if (obj?.url) extraUrlSet.add(canonicalizeEventUrl(String(obj.url)));
+              } catch {
+                // ignore
+              }
+            }
+
+            const unresolvedFinalUrlSet = new Set<string>();
+            for (const raw of unresolved) {
+              try {
+                const obj = JSON.parse(raw);
+                if (obj?.url) unresolvedFinalUrlSet.add(canonicalizeEventUrl(String(obj.url)));
+              } catch {
+                // ignore
+              }
+            }
+
+            debugLog(
+              `evently_${category}_post_extra`,
+              debugUrls.map((u) => ({
+                url: u,
+                queued_as_extra: extraUrlSet.has(u),
+                in_unresolved_final: unresolvedFinalUrlSet.has(u),
+              }))
+            );
           }
         } catch (e) {
           console.error("Evently links failed:", e);
@@ -1124,6 +1187,17 @@ Deno.serve(async (req) => {
         return true;
       });
 
+      if (debugUrlSet.size > 0) {
+        debugLog(
+          "venue_resolution_queue_state",
+          debugUrls.map((u) => ({
+            url: u,
+            in_processed: processedUrls.has(u),
+            in_queue_after_dedupe: queued.some((it: any) => String(it?.url || "") === u),
+          }))
+        );
+      }
+
       // CRITICAL FIX:
       // Do NOT partition by batch number; in practice only batch 4 may run reliably,
       // and partitioning strands some URLs forever (e.g. the far-future “tail” links).
@@ -1138,6 +1212,32 @@ Deno.serve(async (req) => {
           if (Number.isFinite(tb)) return 1;
           return 0;
         });
+
+      // Fair scheduling: process mostly near-term items, but always pull some from the far-future tail
+      // so “bottom of the list” URLs don't get starved forever.
+      const worklist = (() => {
+        if (slice.length <= 1) return slice;
+        const out: any[] = [];
+        let i = 0;
+        let j = slice.length - 1;
+        while (i <= j) {
+          for (let k = 0; k < 3 && i <= j; k++) out.push(slice[i++]);
+          if (i <= j) out.push(slice[j--]);
+        }
+        return out;
+      })();
+
+      if (debugUrlSet.size > 0) {
+        debugLog(
+          "venue_resolution_slice_positions",
+          debugUrls.map((u) => ({
+            url: u,
+            position_in_sorted_queue: slice.findIndex((it: any) => String(it?.url || "") === u),
+            position_in_worklist: worklist.findIndex((it: any) => String(it?.url || "") === u),
+            queue_length: slice.length,
+          }))
+        );
+      }
 
       if (slice.length === 0) {
         console.log("Venue resolution: no queued events found");
@@ -1167,12 +1267,23 @@ Deno.serve(async (req) => {
           progressed += urls.length;
         };
 
-        for (const item of slice) {
+        for (const item of worklist) {
           if (!hasTimeBudget()) {
             console.log(`Time budget exhausted after ${processedThisRun} events`);
             break;
           }
           if (!item?.url) continue;
+
+          const isDebugUrl = debugUrlSet.has(String(item.url));
+          if (isDebugUrl) {
+            debugLog("venue_resolution_item_start", {
+              url: item.url,
+              artist: item.artist,
+              date: item.date,
+              event_type: item.event_type,
+              image_url: item.image_url ?? null,
+            });
+          }
 
           const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
 
@@ -1195,6 +1306,12 @@ Deno.serve(async (req) => {
               source_url: item.url,
             });
             urlsForEvents.push(item.url);
+            if (isDebugUrl) {
+              debugLog("venue_resolution_item_queued_fastpath", {
+                url: item.url,
+                venue: normalizeVenueName(venue),
+              });
+            }
           } else {
             try {
               const detail = await firecrawlScrapeJson(
@@ -1217,22 +1334,43 @@ Deno.serve(async (req) => {
                 }
 
                 if (venue && isEventlyVenueAllowed(venue)) {
+                  const finalVenue = normalizeVenueName(venue);
+                  const finalTicketUrl = detail.ticket_url || item.url;
+                  const finalImageUrl = isValidImageUrl(detail.image_url)
+                    ? detail.image_url
+                    : isValidImageUrl(item.image_url)
+                      ? item.image_url
+                      : null;
+
                   events.push({
                     artist: item.artist,
-                    venue: normalizeVenueName(venue),
+                    venue: finalVenue,
                     date: item.date,
-                    ticket_url: detail.ticket_url || item.url,
+                    ticket_url: finalTicketUrl,
                     tickets_available: detail.tickets_available ?? true,
-                    image_url: isValidImageUrl(detail.image_url)
-                      ? detail.image_url
-                      : isValidImageUrl(item.image_url)
-                        ? item.image_url
-                        : null,
+                    image_url: finalImageUrl,
                     event_type: item.event_type || "concert",
                     source: "evently",
                     source_url: item.url,
                   });
                   urlsForEvents.push(item.url);
+
+                  if (isDebugUrl) {
+                    debugLog("venue_resolution_item_queued_detail", {
+                      url: item.url,
+                      venue: finalVenue,
+                      ticket_url: finalTicketUrl,
+                      detail_venue_name: detail.venue_name ?? null,
+                      detail_address: detail.address ?? null,
+                    });
+                  }
+                } else if (isDebugUrl) {
+                  debugLog("venue_resolution_item_dropped_after_detail", {
+                    url: item.url,
+                    venue_resolved: venue,
+                    detail_venue_name: detail.venue_name ?? null,
+                    detail_address: detail.address ?? null,
+                  });
                 }
               }
             } catch (e) {
