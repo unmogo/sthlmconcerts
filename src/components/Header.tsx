@@ -34,8 +34,11 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
       const result = await triggerScrape();
       toast({
         title: "Scrape started",
-        description: (result.message || "Concerts are being updated.") + " Remaining batches continue in the background.",
+        description:
+          (result.message || "Concerts are being updated.") +
+          " Open Logs to watch batches 1–10 run in the background.",
       });
+      setShowLogs(true);
       queryClient.invalidateQueries({ queryKey: ["concerts"] });
     } catch (err) {
       toast({

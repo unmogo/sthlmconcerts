@@ -61,6 +61,10 @@ export function ScrapeLogDashboard({ onClose }: { onClose: () => void }) {
   const { data: logs, isLoading } = useQuery({
     queryKey: ["scrape-logs"],
     queryFn: fetchScrapeLogs,
+    // Keep the modal “live” so admins can see batches 1–10 progressing.
+    refetchInterval: 4000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   const runs = logs ? groupByRun(logs) : [];

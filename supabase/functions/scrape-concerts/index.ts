@@ -857,7 +857,7 @@ Deno.serve(async (req) => {
         .select("error")
         .eq("source", "evently-needs-venue")
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(50);
 
       let queued: any[] = [];
       for (const entry of logEntries || []) {
