@@ -1267,7 +1267,7 @@ Deno.serve(async (req) => {
           progressed += urls.length;
         };
 
-        for (const item of slice) {
+        for (const item of worklist) {
           if (!hasTimeBudget()) {
             console.log(`Time budget exhausted after ${processedThisRun} events`);
             break;
