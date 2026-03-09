@@ -72,6 +72,26 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
     }
   };
 
+  const handleResolveTickets = async () => {
+    setResolvingTickets(true);
+    try {
+      const result = await triggerResolveTickets();
+      toast({
+        title: "Tickets resolved",
+        description: result.message || "Evently links have been replaced with direct ticket URLs.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["concerts"] });
+    } catch {
+      toast({
+        title: "Ticket resolution failed",
+        description: "Could not resolve ticket URLs. Try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setResolvingTickets(false);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     toast({ title: "Signed out" });
