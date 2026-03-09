@@ -1158,8 +1158,10 @@ Deno.serve(async (req) => {
         return out;
       }
 
-      const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 5000);
-      const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 2000);
+       // Limit how much historical queue state we load per invocation; the queue is re-populated frequently,
+       // and loading thousands of scrape_log rows is expensive and can starve actual processing time.
+       const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 600);
+       const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 1200);
 
       // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
       const processedUrls = new Set<string>();
