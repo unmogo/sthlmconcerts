@@ -23,6 +23,7 @@ interface HeaderProps {
 export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
   const [scraping, setScraping] = useState(false);
   const [fetchingImages, setFetchingImages] = useState(false);
+  const [resolvingTickets, setResolvingTickets] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
