@@ -1090,8 +1090,13 @@ Deno.serve(async (req) => {
       // Deduplicate by url + skip already processed
       const seen = new Set<string>();
       queued = queued.filter((item: any) => {
-        const url = String(item?.url || "");
+        const rawUrl = String(item?.url || "");
+        const url = canonicalizeUrl(rawUrl);
         if (!url) return false;
+
+        // Normalize for consistent dedupe + processed checks
+        item.url = url;
+
         if (processedUrls.has(url)) return false;
         if (seen.has(url)) return false;
         seen.add(url);
