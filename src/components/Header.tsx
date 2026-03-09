@@ -1,12 +1,14 @@
-import { Music, RefreshCw, Download, Trash2, Laugh, Sparkles, Plus, Heart, LogIn, LogOut, ImageIcon, Activity } from "lucide-react";
+import { Music } from "lucide-react";
 import { triggerScrape, triggerFetchImages } from "@/lib/api/concerts";
 import { useState } from "react";
 import { ScrapeLogDashboard } from "./ScrapeLogDashboard";
+import { FilterTabs } from "./header/FilterTabs";
+import { AdminControls } from "./header/AdminControls";
+import { AuthButton } from "./header/AuthButton";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
-import type { EventType } from "@/types/concert";
+import type { FilterType } from "@/types/concert";
 
 interface HeaderProps {
   selectedIds: string[];
@@ -14,8 +16,8 @@ interface HeaderProps {
   onExport: () => void;
   onAdd: () => void;
   deleting: boolean;
-  filter: EventType | "all" | "favorites";
-  onFilterChange: (f: EventType | "all" | "favorites") => void;
+  filter: FilterType;
+  onFilterChange: (f: FilterType) => void;
 }
 
 export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
@@ -25,7 +27,6 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, isAdmin, signOut } = useAuth();
-  const navigate = useNavigate();
 
   const handleScrape = async () => {
     setScraping(true);
@@ -90,112 +91,25 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
           </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-1">
-          {([
-            { value: "all" as const, label: "All", icon: Sparkles },
-            { value: "concert" as const, label: "Concerts", icon: Music },
-            { value: "comedy" as const, label: "Comedy", icon: Laugh },
-            ...(user ? [{ value: "favorites" as const, label: "Favourites", icon: Heart }] : []),
-          ]).map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              onClick={() => onFilterChange(value)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-                filter === value
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
+        <FilterTabs filter={filter} onFilterChange={onFilterChange} showFavorites={!!user} />
 
         <div className="flex items-center gap-2">
-          {/* Admin-only: selection actions */}
-          {isAdmin && selectedIds.length > 0 && (
-            <button
-              onClick={onDelete}
-              disabled={deleting}
-              className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete {selectedIds.length}
-            </button>
-          )}
-
-          {/* Admin-only: Add, Export, Refresh */}
           {isAdmin && (
-            <>
-              <button
-                onClick={onAdd}
-                className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-              >
-                <Plus className="h-4 w-4" />
-                Add
-              </button>
-
-              <button
-                onClick={onExport}
-                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
-              >
-                <Download className="h-4 w-4" />
-                Export
-              </button>
-
-              <button
-                onClick={handleFetchImages}
-                disabled={fetchingImages}
-                className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-              >
-                <ImageIcon className={`h-4 w-4 ${fetchingImages ? "animate-pulse" : ""}`} />
-                {fetchingImages ? "Fetching…" : "Images"}
-              </button>
-
-              <button
-                onClick={() => setShowLogs(true)}
-                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20"
-              >
-                <Activity className="h-4 w-4" />
-                Logs
-              </button>
-
-              <button
-                onClick={handleScrape}
-                disabled={scraping}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-neon px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${scraping ? "animate-spin" : ""}`} />
-                {scraping ? "Scraping..." : "Refresh"}
-              </button>
-            </>
+            <AdminControls
+              selectedCount={selectedIds.length}
+              onDelete={onDelete}
+              deleting={deleting}
+              onAdd={onAdd}
+              onExport={onExport}
+              onFetchImages={handleFetchImages}
+              fetchingImages={fetchingImages}
+              onShowLogs={() => setShowLogs(true)}
+              onScrape={handleScrape}
+              scraping={scraping}
+            />
           )}
 
-          {/* Auth button */}
-          {user ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground hidden sm:block truncate max-w-[120px]">
-                {user.email}
-              </span>
-              <button
-                onClick={handleSignOut}
-                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline">Sign out</span>
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => navigate("/auth")}
-              className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-            >
-              <LogIn className="h-4 w-4" />
-              Sign in
-            </button>
-          )}
+          <AuthButton userEmail={user?.email} onSignOut={handleSignOut} />
         </div>
       </div>
     </header>

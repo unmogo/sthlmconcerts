@@ -2,13 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchConcerts } from "@/lib/api/concerts";
 import { ConcertCard } from "./ConcertCard";
 import { Loader2, Music, Heart } from "lucide-react";
-import type { Concert, EventType } from "@/types/concert";
+import type { Concert, FilterType } from "@/types/concert";
 import { useMemo } from "react";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-
-type FilterType = EventType | "all" | "favorites";
+import { groupConcerts, filterBySearch } from "@/lib/utils/concert-utils";
 
 interface ConcertGridProps {
   selectedIds: string[];
@@ -17,67 +16,6 @@ interface ConcertGridProps {
   searchQuery: string;
 }
 
-// Venue alias normalization
-const VENUE_ALIASES: Record<string, string> = {
-  "friends arena": "Strawberry Arena",
-  "strawberry arena": "Strawberry Arena",
-  "ericsson globe": "Avicii Arena",
-  "avicii arena": "Avicii Arena",
-  "globen": "Avicii Arena",
-  "hovet": "Hovet",
-  "annexet": "Annexet",
-};
-
-// Strip tour names/subtitles for grouping
-const normalizeForGroup = (s: string) =>
-  s.replace(/\s*[\(\[].*?[\)\]]/g, "")  // remove (feat. X), [Live], etc.
-   .replace(/\s+[wW]\/\s+.*/g, "")       // remove "w/ Guest"
-   .replace(/\s*\+\s+förband.*/gi, "")    // remove "+ förband"
-   .split(/[:\-–—|]/)[0].trim().toLowerCase();
-
-const normalizeVenueName = (venue: string): string => {
-  const lower = venue.toLowerCase().trim();
-  return VENUE_ALIASES[lower] || venue;
-};
-
-// Deduplicate concerts: same normalized artist + venue + same calendar date → keep one (prefer earliest time, shortest name)
-function deduplicateConcerts(concerts: Concert[]): Concert[] {
-  const seen = new Map<string, Concert>();
-  for (const c of concerts) {
-    // Use date-only key so 18:15, 19:00, 19:30 on same day collapse to one
-    const dateKey = new Date(c.date).toISOString().split("T")[0];
-    const key = `${normalizeForGroup(c.artist)}|${normalizeVenueName(c.venue).toLowerCase().trim()}|${dateKey}`;
-    const existing = seen.get(key);
-    if (!existing || c.artist.length < existing.artist.length) {
-      seen.set(key, c);
-    }
-  }
-  return [...seen.values()];
-}
-
-// Group concerts by same artist + venue (different dates only)
-function groupConcerts(concerts: Concert[]): { primary: Concert; extras: Concert[] }[] {
-  const deduped = deduplicateConcerts(concerts);
-  const groups: Map<string, Concert[]> = new Map();
-
-  for (const c of deduped) {
-    const key = `${normalizeForGroup(c.artist)}|${normalizeVenueName(c.venue).toLowerCase().trim()}`;
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key)!.push(c);
-  }
-
-  const result: { primary: Concert; extras: Concert[] }[] = [];
-  for (const group of groups.values()) {
-    group.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    result.push({ primary: group[0], extras: group.slice(1) });
-  }
-
-  // Sort by first date
-  result.sort((a, b) => new Date(a.primary.date).getTime() - new Date(b.primary.date).getTime());
-  return result;
-}
 
 export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }: ConcertGridProps) {
   const { data: concerts, isLoading, error } = useQuery({
@@ -91,6 +29,8 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
 
   const grouped = useMemo(() => {
     if (!concerts) return [];
+    
+    // Apply filter first
     let filtered: Concert[];
     if (filter === "favorites") {
       filtered = concerts.filter((c) => favoriteIds.includes(c.id));
@@ -99,13 +39,10 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
     } else {
       filtered = concerts.filter((c) => c.event_type === filter);
     }
+    
     // Apply search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (c) => c.artist.toLowerCase().includes(q) || normalizeVenueName(c.venue).toLowerCase().includes(q)
-      );
-    }
+    filtered = filterBySearch(filtered, searchQuery);
+    
     return groupConcerts(filtered);
   }, [concerts, filter, favoriteIds, searchQuery]);
 

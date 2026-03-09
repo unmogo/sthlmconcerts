@@ -1,5 +1,7 @@
 export type EventType = "concert" | "comedy" | "other";
 
+export type FilterType = EventType | "all" | "favorites";
+
 export interface Concert {
   id: string;
   artist: string;

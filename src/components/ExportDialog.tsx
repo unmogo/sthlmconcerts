@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { format } from "date-fns";
 import { Download, X, FileJson, FileSpreadsheet, Image } from "lucide-react";
 import type { Concert } from "@/types/concert";
@@ -10,7 +9,6 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ concerts, onClose }: ExportDialogProps) {
-  const [generating, setGenerating] = useState(false);
 
   const handleCSV = () => {
     const csv = exportConcertsToCSV(concerts);
