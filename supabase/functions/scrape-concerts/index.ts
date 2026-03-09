@@ -1843,8 +1843,6 @@ Deno.serve(async (req) => {
           const pageStart = Date.now();
           console.log(`Gap-fill: Resident Advisor (${raPageUrl})`);
 
-          // "Live" count: number of unique event links on the listing page (pages 1–3)
-          const pageLinks = await firecrawlScrapeLinks(firecrawlKey, raPageUrl, 15000);
           const baseOrigin = (() => {
             try {
               return new URL(raPageUrl).origin;
@@ -1852,30 +1850,31 @@ Deno.serve(async (req) => {
               return "https://ra.co";
             }
           })();
-          const liveEventLinks = Array.from(
-            new Set(
-              pageLinks
-                .map((l) => normalizeRaEventUrl(l, baseOrigin))
-                .filter((l): l is string => Boolean(l)),
-            ),
-          );
-          const liveCount = liveEventLinks.length;
 
-          const runExtractionPass = async (passLabel: string, waitFor: number) => {
-            if (!hasTimeBudget()) return 0;
+          const scrapePass = async (passLabel: string, waitFor: number) => {
+            if (!hasTimeBudget()) return { accepted: 0, liveCount: 0 };
 
-            const raResult = await firecrawlScrapeJson(
+            const { json, links } = await firecrawlScrapeJsonAndLinks(
               firecrawlKey,
               raPageUrl,
               raSchema,
-              `Extract ALL events listed on this Resident Advisor Stockholm listing page (no omissions).\n- Return one item per visible event card\n- Use year 2026 when year is not shown\n- Provide the RA event page URL in ticket_url when possible\n- Venue must be the on-card venue name\n(Validation hint: the page has approximately ${liveCount || "?"} event links.)`,
+              `Extract ALL events listed on this Resident Advisor Stockholm listing page (no omissions).\n- Return one item per visible event card\n- Use year 2026 when year is not shown\n- Provide the RA event page URL in ticket_url when possible\n- Venue must be the on-card venue name`,
               waitFor,
               false,
             );
 
-            const pageEvents: ScrapedEvent[] = (raResult?.events || [])
-              .filter((e: any) => e.artist && e.venue && e.date)
-              .map((e: any) => {
+            const liveEventLinks = Array.from(
+              new Set(
+                (links || [])
+                  .map((l) => normalizeRaEventUrl(l, baseOrigin))
+                  .filter((l): l is string => Boolean(l)),
+              ),
+            );
+            const liveCount = liveEventLinks.length;
+
+            const pageEvents: ScrapedEvent[] = ((json?.events || []) as any[])
+              .filter((e) => e?.artist && e?.venue && e?.date)
+              .map((e) => {
                 const ticketUrl = isValidTicketUrl(e.ticket_url) ? e.ticket_url : null;
                 const venue = normalizeVenueName(String(e.venue));
                 return {
@@ -1890,7 +1889,7 @@ Deno.serve(async (req) => {
                   source_url: ticketUrl || raPageUrl,
                 };
               })
-              .filter((e: ScrapedEvent) => isRaVenueAllowed(e.venue));
+              .filter((e) => isRaVenueAllowed(e.venue));
 
             let accepted = 0;
             for (const e of pageEvents) {
@@ -1901,19 +1900,22 @@ Deno.serve(async (req) => {
               accepted++;
             }
 
-            console.log(`Resident Advisor (${raPageUrl}) ${passLabel}: +${accepted} accepted`);
-            return accepted;
+            console.log(`Resident Advisor (${raPageUrl}) ${passLabel}: +${accepted} accepted (live=${liveCount})`);
+            return { accepted, liveCount };
           };
 
-          let acceptedTotal = 0;
-          acceptedTotal += await runExtractionPass("pass1", 15000);
+          const pass1 = await scrapePass("pass1", 8000);
+          let acceptedTotal = pass1.accepted;
+          let liveCount = pass1.liveCount;
 
           // Retry once if we appear to be missing events vs the live link count.
           if (liveCount > 0 && acceptedTotal < liveCount) {
             console.warn(
               `Resident Advisor coverage warning (${raPageUrl}): extracted=${acceptedTotal} live=${liveCount} — retrying`,
             );
-            acceptedTotal += await runExtractionPass("pass2", 22000);
+            const pass2 = await scrapePass("pass2", 11000);
+            acceptedTotal += pass2.accepted;
+            liveCount = Math.max(liveCount, pass2.liveCount);
           }
 
           const mismatch = liveCount > 0 && acceptedTotal < liveCount;
@@ -1927,7 +1929,7 @@ Deno.serve(async (req) => {
           });
 
           console.log(`Resident Advisor (${raPageUrl}): accepted=${acceptedTotal} live=${liveCount}`);
-          await delay(1500);
+          await delay(900);
         }
 
         if (raEvents.length > 0) {
