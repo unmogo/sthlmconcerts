@@ -704,6 +704,30 @@ Deno.serve(async (req) => {
 
           console.log(`Evently links: extracted ${listingLinks.length} links; ${eventUrls.length} look like event URLs`);
 
+          if (debugUrlSet.size > 0) {
+            const eventUrlSet = new Set(eventUrls);
+            const parsedUrlSet = new Set(events.map((e) => canonicalizeEventUrl(e.source_url)));
+            const unresolvedUrlSet = new Set<string>();
+            for (const raw of unresolved) {
+              try {
+                const obj = JSON.parse(raw);
+                if (obj?.url) unresolvedUrlSet.add(canonicalizeEventUrl(String(obj.url)));
+              } catch {
+                // ignore
+              }
+            }
+
+            debugLog(
+              `evently_${category}_listing_presence`,
+              debugUrls.map((u) => ({
+                url: u,
+                in_listing_links: eventUrlSet.has(u),
+                in_parsed_with_venue: parsedUrlSet.has(u),
+                in_unresolved_pre_extra: unresolvedUrlSet.has(u),
+              }))
+            );
+          }
+
           const seenUrls = new Set<string>();
           for (const e of events) seenUrls.add(e.source_url);
           for (const raw of unresolved) {
