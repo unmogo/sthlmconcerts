@@ -671,7 +671,15 @@ Deno.serve(async (req) => {
         // 2) Safety net: scrape all links from the listing (more reliable than markdown on very long pages)
         // and queue any missing event URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
         try {
-          const listingLinks = await firecrawlScrapeLinks(firecrawlKey, listingUrl, 15000);
+          // Prefer Firecrawl Map (typically much higher link coverage than scrape-links on long pages),
+          // then fall back to scrape-links if map returns too few results.
+          let listingLinks = await firecrawlMap(firecrawlKey, listingUrl, "/en/events/");
+          if (!Array.isArray(listingLinks) || listingLinks.length < 200) {
+            const scrapedLinks = await firecrawlScrapeLinks(firecrawlKey, listingUrl, 15000);
+            if (Array.isArray(scrapedLinks) && scrapedLinks.length > (Array.isArray(listingLinks) ? listingLinks.length : 0)) {
+              listingLinks = scrapedLinks;
+            }
+          }
 
           const normalizeLink = (l: string) => {
             const trimmed = (l || "").trim();
