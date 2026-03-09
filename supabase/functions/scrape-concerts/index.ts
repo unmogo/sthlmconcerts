@@ -1259,6 +1259,17 @@ Deno.serve(async (req) => {
           }
           if (!item?.url) continue;
 
+          const isDebugUrl = debugUrlSet.has(String(item.url));
+          if (isDebugUrl) {
+            debugLog("venue_resolution_item_start", {
+              url: item.url,
+              artist: item.artist,
+              date: item.date,
+              event_type: item.event_type,
+              image_url: item.image_url ?? null,
+            });
+          }
+
           const dayKey = `${normalizeArtist(item.artist)}|${dateOnly(item.date)}`;
 
           // Fast-path: resolve via URL slug or by matching existing same-day venues (no Firecrawl call).
