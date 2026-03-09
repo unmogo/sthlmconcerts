@@ -500,8 +500,9 @@ Deno.serve(async (req) => {
 
     supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Chain early for long-running batches so the pipeline continues even if this batch hits a hard timeout.
-    if (chainRequested && targetBatch >= 4) {
+    // Chain early ONLY for batch 4 (venue resolution), otherwise batches 4–10 start concurrently and
+    // can overwhelm Firecrawl + race each other before processed URLs are persisted.
+    if (chainRequested && targetBatch === 4) {
       await triggerNextBatch(targetBatch, supabase);
       chainedAlready = true;
     }
