@@ -127,6 +127,8 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
               onExport={onExport}
               onFetchImages={handleFetchImages}
               fetchingImages={fetchingImages}
+              onResolveTickets={handleResolveTickets}
+              resolvingTickets={resolvingTickets}
               onShowLogs={() => setShowLogs(true)}
               onScrape={handleScrape}
               scraping={scraping}
