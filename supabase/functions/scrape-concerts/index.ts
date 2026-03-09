@@ -427,6 +427,11 @@ Deno.serve(async (req) => {
 
     supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    // Chain early for long-running batches so the pipeline continues even if this batch hits a hard timeout.
+    if (chainRequested && targetBatch >= 4) {
+      await triggerNextBatch(targetBatch, supabase);
+      chainedAlready = true;
+    }
     // Load deleted concerts
     const { data: deletedConcerts } = await supabase.from("deleted_concerts").select("artist, venue, date");
     const deletedKeys = new Set(
