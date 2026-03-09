@@ -1092,13 +1092,31 @@ Deno.serve(async (req) => {
         );
 
         const events: ScrapedEvent[] = [];
-        const processedThisBatch: string[] = [];
-        let processed = 0;
+        const urlsForEvents: string[] = [];
+        let processedThisRun = 0;
+        let progressed = 0;
         let errors = 0;
+
+        const persistProcessedUrls = async (urls: string[]) => {
+          if (urls.length === 0) return;
+          const chunkSize = 200;
+          for (let i = 0; i < urls.length; i += chunkSize) {
+            const chunk = urls.slice(i, i + chunkSize);
+            const { error } = await supabase.from("scrape_log").insert({
+              batch: targetBatch,
+              source: "evently-venue-processed",
+              events_found: chunk.length,
+              events_upserted: chunk.length,
+              error: JSON.stringify(chunk),
+            });
+            if (error) console.error("Failed to persist processed URLs:", error.message);
+          }
+          progressed += urls.length;
+        };
 
         for (const item of slice) {
           if (!hasTimeBudget()) {
-            console.log(`Time budget exhausted after ${processed} events`);
+            console.log(`Time budget exhausted after ${processedThisRun} events`);
             break;
           }
           if (!item?.url) continue;
@@ -1123,7 +1141,7 @@ Deno.serve(async (req) => {
               source: "evently",
               source_url: item.url,
             });
-            processedThisBatch.push(item.url);
+            urlsForEvents.push(item.url);
           } else {
             try {
               const detail = await firecrawlScrapeJson(
@@ -1161,7 +1179,7 @@ Deno.serve(async (req) => {
                     source: "evently",
                     source_url: item.url,
                   });
-                  processedThisBatch.push(item.url);
+                  urlsForEvents.push(item.url);
                 }
               }
             } catch (e) {
@@ -1170,47 +1188,36 @@ Deno.serve(async (req) => {
             }
           }
 
-          processed++;
+          processedThisRun++;
 
-          // Batch upsert every 20 events to avoid losing progress
-          if (events.length >= 20) {
+          // Flush every 20 to persist progress even if the HTTP request is cancelled.
+          while (events.length >= 20) {
+            const chunkEvents = events.splice(0, 20);
+            const chunkUrls = urlsForEvents.splice(0, 20);
             try {
-              await upsertEvents(events.splice(0, events.length));
+              await upsertEvents(chunkEvents);
+              await persistProcessedUrls(chunkUrls);
             } catch (e) {
               console.error(`Batch upsert failed: ${e?.message || e}`);
             }
           }
 
-          if (processed % 8 === 0) await delay(500);
+          if (processedThisRun % 8 === 0) await delay(500);
         }
 
-        // Upsert remaining events
+        // Upsert remaining events + persist remaining processed URLs
         if (events.length > 0) {
           try {
             await upsertEvents(events);
+            await persistProcessedUrls(urlsForEvents);
           } catch (e) {
             console.error(`Final upsert failed: ${e?.message || e}`);
           }
         }
 
-        // Persist processed URLs so future batches/refreshes continue from the tail
-        if (processedThisBatch.length > 0) {
-          const chunkSize = 200;
-          for (let i = 0; i < processedThisBatch.length; i += chunkSize) {
-            const chunk = processedThisBatch.slice(i, i + chunkSize);
-            await supabase.from("scrape_log").insert({
-              batch: targetBatch,
-              source: "evently-venue-processed",
-              events_found: chunk.length,
-              events_upserted: chunk.length,
-              error: JSON.stringify(chunk),
-            });
-          }
-        }
-
-        totalScraped += processed;
+        totalScraped += processedThisRun;
         console.log(
-          `Venue resolution done: ${processed} processed, +${processedThisBatch.length} progressed, ${errors} errors`
+          `Venue resolution done: ${processedThisRun} processed, +${progressed} progressed, ${errors} errors`
         );
       }
     }
