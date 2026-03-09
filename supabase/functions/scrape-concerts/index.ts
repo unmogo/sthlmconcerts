@@ -1138,12 +1138,14 @@ Deno.serve(async (req) => {
       // PostgREST enforces a default max of 1000 rows per request; we must page
       // or tail URLs will fall out of the window.
       const PAGE_SIZE = 1000;
-      async function fetchLogErrorsBySource(source: string, maxRows: number): Promise<string[]> {
-        const out: string[] = [];
+      type QueueLogEntry = { error: string; created_at: string | null };
+
+      async function fetchLogErrorsBySource(source: string, maxRows: number): Promise<QueueLogEntry[]> {
+        const out: QueueLogEntry[] = [];
         for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
           const { data, error } = await supabase
             .from("scrape_log")
-            .select("error")
+            .select("error, created_at")
             .eq("source", source)
             .order("created_at", { ascending: false })
             .range(offset, offset + PAGE_SIZE - 1);
@@ -1154,7 +1156,12 @@ Deno.serve(async (req) => {
           }
           if (!data || data.length === 0) break;
 
-          for (const row of data) out.push(row.error || "");
+          for (const row of data) {
+            out.push({
+              error: String(row.error || ""),
+              created_at: row.created_at || null,
+            });
+          }
 
           // Stop early if we're just debugging and we already have all URLs covered.
           if (debugUrlSet.size > 0) {
@@ -1169,11 +1176,10 @@ Deno.serve(async (req) => {
         return out;
       }
 
-       // Limit how much historical queue state we load per invocation; the queue is re-populated frequently,
-       // and loading thousands of scrape_log rows is expensive and can starve actual processing time.
-       const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 600);
-       const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 1200);
-
+      // Limit how much historical queue state we load per invocation; the queue is re-populated frequently,
+      // and loading thousands of scrape_log rows is expensive and can starve actual processing time.
+      const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 600);
+      const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 1200);
       // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
       const processedUrls = new Set<string>();
       for (const raw of processedEntryErrors) {
