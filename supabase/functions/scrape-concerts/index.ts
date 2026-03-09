@@ -1019,8 +1019,10 @@ Deno.serve(async (req) => {
         .from("scrape_log")
         .select("error")
         .eq("source", "evently-needs-venue")
+        // IMPORTANT: newest-first is fine because we dedupe by URL below, but we must
+        // load enough history so tail events don’t fall out of the window.
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(5000);
 
       // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
       const { data: processedEntries } = await supabase
@@ -1072,24 +1074,25 @@ Deno.serve(async (req) => {
         return true;
       });
 
-      if (queued.length === 0) {
+      // CRITICAL FIX:
+      // Do NOT partition by batch number; in practice only batch 4 may run reliably,
+      // and partitioning strands some URLs forever (e.g. the far-future “tail” links).
+      // Instead, process the whole deduped queue until the time budget runs out.
+      const slice = queued
+        .slice()
+        .sort((a: any, b: any) => {
+          const ta = Date.parse(String(a?.date || ""));
+          const tb = Date.parse(String(b?.date || ""));
+          if (Number.isFinite(ta) && Number.isFinite(tb)) return ta - tb;
+          if (Number.isFinite(ta)) return -1;
+          if (Number.isFinite(tb)) return 1;
+          return 0;
+        });
+
+      if (slice.length === 0) {
         console.log("Venue resolution: no queued events found");
       } else {
-        const resolutionBatches = TOTAL_BATCHES - 3; // batches 4..10 inclusive
-        const idx = Math.min(Math.max(targetBatch - 4, 0), resolutionBatches - 1);
-
-        // Stable partitioning across batches (prevents overlap between batch 4..10)
-        const hashUrl = (s: string) => {
-          let h = 0;
-          for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-          return Math.abs(h);
-        };
-
-        const slice = queued.filter((item: any) => hashUrl(String(item.url)) % resolutionBatches === idx);
-
-        console.log(
-          `Venue resolution: ${slice.length} events (batch ${targetBatch}, bucket ${idx + 1}/${resolutionBatches}, total queued ${queued.length})`
-        );
+        console.log(`Venue resolution: ${slice.length} queued events (batch ${targetBatch})`);
 
         const events: ScrapedEvent[] = [];
         const urlsForEvents: string[] = [];
