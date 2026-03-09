@@ -1307,13 +1307,22 @@ Deno.serve(async (req) => {
       // Keep near-term ordering inside each bucket, but always process fresh queue first.
       const slice = [...sortByDateAsc(freshQueued), ...sortByDateAsc(backlogQueued)];
 
-       // Fair scheduling: the queue can be huge (10k+), and strict date-order processing starves late-year events.
-       // Build a month-bucketed round-robin worklist so each invocation touches *all* months (including late 2026).
+       // Fair scheduling: rotate the queue window between invocations so unresolved head items
+       // don't repeatedly starve later URLs in the same month.
+       const MAX_ITEMS_PER_INVOCATION = 320;
+       const ROTATION_WINDOW_MS = 5 * 60 * 1000;
+       const rotationSeed = Math.floor(Date.now() / ROTATION_WINDOW_MS) + Math.max(0, targetBatch - 4);
+       const rotationOffset = slice.length > 0 ? (rotationSeed * 131) % slice.length : 0;
+       const rotatedSlice =
+         slice.length > 0
+           ? [...slice.slice(rotationOffset), ...slice.slice(0, rotationOffset)]
+           : slice;
+
        let worklist = (() => {
-         if (slice.length <= 1) return slice;
+         if (rotatedSlice.length <= 1) return rotatedSlice;
 
          const monthBuckets = new Map<string, any[]>();
-         for (const it of slice) {
+         for (const it of rotatedSlice) {
            const d = String(it?.date || "");
            const monthKey = d.length >= 7 ? d.slice(0, 7) : "unknown"; // YYYY-MM
            const arr = monthBuckets.get(monthKey) || [];
@@ -1322,9 +1331,8 @@ Deno.serve(async (req) => {
          }
 
          const months = Array.from(monthBuckets.keys()).sort(); // ISO months sort naturally
-
-         const MAX_ITEMS_PER_INVOCATION = 260;
          const out: any[] = [];
+
          while (out.length < MAX_ITEMS_PER_INVOCATION) {
            let progressedThisRound = false;
            for (const m of months) {
@@ -1337,18 +1345,18 @@ Deno.serve(async (req) => {
            if (!progressedThisRound) break;
          }
 
-          return out.filter(Boolean);
-        })();
+         return out.filter(Boolean);
+       })();
 
        // If specific debug URLs are provided, prioritize them (and optionally only process them).
        if (debugUrlSet.size > 0) {
-         const isDebugItem = (it: any) => debugUrlSet.has(String(it?.url || ""));
-         const debugItems = worklist.filter(isDebugItem);
+         const debugItemsFromQueue = slice.filter((it: any) => debugUrlSet.has(String(it?.url || "")));
          if (debugOnly) {
-           worklist = debugItems;
-         } else if (debugItems.length > 0) {
-           const nonDebugItems = worklist.filter((it: any) => !isDebugItem(it));
-           worklist = [...debugItems, ...nonDebugItems];
+           worklist = debugItemsFromQueue;
+         } else if (debugItemsFromQueue.length > 0) {
+           const debugSet = new Set(debugItemsFromQueue.map((it: any) => String(it?.url || "")));
+           const nonDebugItems = worklist.filter((it: any) => !debugSet.has(String(it?.url || "")));
+           worklist = [...debugItemsFromQueue, ...nonDebugItems];
          }
        }
 
