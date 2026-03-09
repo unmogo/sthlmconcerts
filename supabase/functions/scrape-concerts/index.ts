@@ -518,7 +518,7 @@ Deno.serve(async (req) => {
       console.log(`Upserted ${count}/${events.length}`);
     }
 
-    console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chain}) ===`);
+    console.log(`=== Batch ${targetBatch}/${TOTAL_BATCHES} (chain=${chainRequested}) ===`);
 
     // ==================== BATCH 1-3: EVENTLY (SINGLE PAGE=60, RESUME FROM OFFSET) ====================
     if (targetBatch >= 1 && targetBatch <= 3) {
