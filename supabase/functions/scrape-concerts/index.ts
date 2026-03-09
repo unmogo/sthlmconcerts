@@ -722,7 +722,13 @@ Deno.serve(async (req) => {
 
           const e = events[i];
           e.venue = normalizeVenueName(e.venue);
-          if (isInvalidVenue(e.venue) || !isStockholmVenue(e.venue)) continue;
+
+          const venueOk =
+            e.source === "evently"
+              ? isEventlyVenueAllowed(e.venue)
+              : !isInvalidVenue(e.venue) && isStockholmVenue(e.venue);
+
+          if (!venueOk) continue;
 
           const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
           if (deletedKeys.has(key)) continue;
