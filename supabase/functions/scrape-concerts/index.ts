@@ -485,6 +485,7 @@ Deno.serve(async (req) => {
       const body = await req.json();
       if (body?.batch) targetBatch = Number(body.batch);
       if (body?.chain !== undefined) chainRequested = Boolean(body.chain);
+      if (body?.debug?.only !== undefined) debugOnly = Boolean(body.debug.only);
       if (Array.isArray(body?.debug?.urls)) {
         debugUrls = body.debug.urls.map((u: any) => canonicalizeUrl(String(u)));
         for (const u of debugUrls) debugUrlSet.add(u);
