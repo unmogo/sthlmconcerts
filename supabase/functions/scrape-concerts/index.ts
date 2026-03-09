@@ -1216,17 +1216,20 @@ Deno.serve(async (req) => {
         .or("venue.ilike.%example.com%,ticket_url.ilike.%example.com%");
     }
 
-    // Chain FIRST so next batch starts even if upsert is slow
-    if (chain) await triggerNextBatch(targetBatch, supabase);
+    // Chain at the end for quick batches (1-3); long batches (4+) already chained early.
+    if (chainRequested && !chainedAlready) {
+      await triggerNextBatch(targetBatch, supabase);
+      chainedAlready = true;
+    }
 
     // Log this batch
-    const elapsed = Math.round((Date.now() - START_TIME) / 1000);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
     await supabase.from("scrape_log").insert({
       batch: targetBatch,
       source: targetBatch <= 3 ? "evently-listing" : targetBatch <= 5 ? "evently-detail" : `secondary-${targetBatch}`,
       events_found: totalScraped,
       events_upserted: totalUpserted,
-      duration_ms: Date.now() - START_TIME,
+      duration_ms: Date.now() - startTime,
     });
 
     const message = `Batch ${targetBatch}: scraped=${totalScraped}, upserted=${totalUpserted} (${elapsed}s)`;
