@@ -52,6 +52,7 @@ function isBadImageUrl(url: string | null | undefined): boolean {
     lower.includes("widget-launcher.imbox.io") ||
     lower.includes("konserthuset.se/globalassets") ||
     lower.includes("evently.se/api/file") ||
+    lower.includes("evently.se/img/") ||
     lower.includes("localhost") ||
     lower.includes("lovable.app") ||
     lower.includes("id-preview--")
@@ -154,7 +155,7 @@ Deno.serve(async (req) => {
       .from("concerts")
       .select("id, artist, event_type, image_url")
       .gte("date", new Date().toISOString())
-      .or("image_url.is.null,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%")
+      .or("image_url.is.null,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%,image_url.ilike.%evently.se/img/%")
       .order("date", { ascending: true });
 
     if (error) throw error;

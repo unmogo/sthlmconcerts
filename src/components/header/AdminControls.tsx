@@ -1,4 +1,4 @@
-import { Trash2, Plus, Download, ImageIcon, Activity, RefreshCw } from "lucide-react";
+import { Trash2, Plus, Download, ImageIcon, Activity, RefreshCw, Ticket } from "lucide-react";
 
 interface AdminControlsProps {
   selectedCount: number;
@@ -8,6 +8,8 @@ interface AdminControlsProps {
   onExport: () => void;
   onFetchImages: () => void;
   fetchingImages: boolean;
+  onResolveTickets: () => void;
+  resolvingTickets: boolean;
   onShowLogs: () => void;
   onScrape: () => void;
   scraping: boolean;
@@ -21,6 +23,8 @@ export function AdminControls({
   onExport,
   onFetchImages,
   fetchingImages,
+  onResolveTickets,
+  resolvingTickets,
   onShowLogs,
   onScrape,
   scraping,
@@ -61,6 +65,15 @@ export function AdminControls({
       >
         <ImageIcon className={`h-4 w-4 ${fetchingImages ? "animate-pulse" : ""}`} />
         {fetchingImages ? "Fetching…" : "Images"}
+      </button>
+
+      <button
+        onClick={onResolveTickets}
+        disabled={resolvingTickets}
+        className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
+      >
+        <Ticket className={`h-4 w-4 ${resolvingTickets ? "animate-pulse" : ""}`} />
+        {resolvingTickets ? "Resolving…" : "Tickets"}
       </button>
 
       <button

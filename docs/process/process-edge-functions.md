@@ -5,7 +5,8 @@
 | Function | Purpose | Auth Required |
 |----------|---------|---------------|
 | `scrape-concerts` | Multi-batch scraper with auto-chaining | Service role |
-| `fetch-images` | MusicBrainz/Wikipedia artist image lookup | Service role |
+| `fetch-images` | Spotify/MusicBrainz/Wikipedia artist image lookup | Service role |
+| `resolve-tickets` | Replace evently.se ticket URLs with direct seller links | Service role |
 | `manage-concerts` | CRUD + scrape-url for admin operations | Admin role |
 
 ## Patterns

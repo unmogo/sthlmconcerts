@@ -1,5 +1,5 @@
 import { Music } from "lucide-react";
-import { triggerScrape, triggerFetchImages } from "@/lib/api/concerts";
+import { triggerScrape, triggerFetchImages, triggerResolveTickets } from "@/lib/api/concerts";
 import { useState } from "react";
 import { ScrapeLogDashboard } from "./ScrapeLogDashboard";
 import { FilterTabs } from "./header/FilterTabs";
@@ -23,6 +23,7 @@ interface HeaderProps {
 export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filter, onFilterChange }: HeaderProps) {
   const [scraping, setScraping] = useState(false);
   const [fetchingImages, setFetchingImages] = useState(false);
+  const [resolvingTickets, setResolvingTickets] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -71,6 +72,26 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
     }
   };
 
+  const handleResolveTickets = async () => {
+    setResolvingTickets(true);
+    try {
+      const result = await triggerResolveTickets();
+      toast({
+        title: "Tickets resolved",
+        description: result.message || "Evently links have been replaced with direct ticket URLs.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["concerts"] });
+    } catch {
+      toast({
+        title: "Ticket resolution failed",
+        description: "Could not resolve ticket URLs. Try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setResolvingTickets(false);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     toast({ title: "Signed out" });
@@ -106,6 +127,8 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
               onExport={onExport}
               onFetchImages={handleFetchImages}
               fetchingImages={fetchingImages}
+              onResolveTickets={handleResolveTickets}
+              resolvingTickets={resolvingTickets}
               onShowLogs={() => setShowLogs(true)}
               onScrape={handleScrape}
               scraping={scraping}

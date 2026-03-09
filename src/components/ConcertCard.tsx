@@ -17,7 +17,8 @@ interface ConcertCardProps {
 
 export function ConcertCard({ concert, extraDates = [], index, selected, onToggleSelect }: ConcertCardProps) {
   const [showEdit, setShowEdit] = useState(false);
-  const [imageFailed, setImageFailed] = useState(false);
+  const isBadImage = !concert.image_url || concert.image_url.includes("evently.se/img/");
+  const [imageFailed, setImageFailed] = useState(isBadImage);
   const { user, isAdmin } = useAuth();
   const { favoriteIds, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
