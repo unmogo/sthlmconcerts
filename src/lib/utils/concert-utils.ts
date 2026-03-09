@@ -38,6 +38,29 @@ const isRecurringComedySeries = (artist: string): boolean => {
 };
 
 /**
+ * Heuristic: "series" titles should group even if venue strings vary
+ * (e.g. weekly standup clubs, open mics, comedy nights).
+ */
+const COMEDY_SERIES_KEYWORDS = [
+  "comedy",
+  "standup",
+  "stand-up",
+  "open mic",
+  "klubb",
+  "club",
+  "komedi",
+  "humor",
+  "humour",
+  "improv",
+  "roast",
+];
+
+const isLikelyComedySeriesTitle = (artist: string): boolean => {
+  const lower = artist.toLowerCase();
+  return COMEDY_SERIES_KEYWORDS.some((kw) => lower.includes(kw));
+};
+
+/**
  * Normalize venue name using known aliases
  */
 export const normalizeVenueName = (venue: string): string => {
@@ -59,21 +82,23 @@ export const normalizeForGroup = (artistName: string): string =>
 
 /**
  * Generate grouping key for a concert
- * For recurring comedy series, we only use artist name to group all shows together
+ * For comedy series, we only use the title to group all dates together.
  */
 const getGroupingKey = (concert: Concert): string => {
   const normalizedArtist = normalizeForGroup(concert.artist);
-  
-  // Recurring comedy shows → group by artist only (ignore venue variations)
-  if (isRecurringComedySeries(concert.artist)) {
-    // Further normalize common variations
+
+  const shouldGroupComedyByTitleOnly =
+    concert.event_type === "comedy" &&
+    (isRecurringComedySeries(concert.artist) || isLikelyComedySeriesTitle(concert.artist));
+
+  if (shouldGroupComedyByTitleOnly) {
     let key = normalizedArtist;
     if (key.includes("maffia comedy")) key = "maffia comedy superweekend";
     if (key.includes("raw sthlm") || key.includes("raw comedy")) key = "raw sthlm";
     return `recurring:${key}`;
   }
-  
-  // Normal grouping: artist + venue
+
+  // Default grouping: artist + venue
   return `${normalizedArtist}|${normalizeVenueName(concert.venue).toLowerCase().trim()}`;
 };
 
