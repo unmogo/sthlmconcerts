@@ -6,9 +6,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const START_TIME = Date.now();
 const TIME_BUDGET_MS = 240_000;
-const hasTimeBudget = () => Date.now() - START_TIME < TIME_BUDGET_MS;
+
+function createTimeBudget() {
+  const startTime = Date.now();
+  return {
+    startTime,
+    hasTimeBudget: () => Date.now() - startTime < TIME_BUDGET_MS,
+  };
+}
+
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ==================== NORMALIZATION ====================
