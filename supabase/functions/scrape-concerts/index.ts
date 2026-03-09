@@ -254,19 +254,35 @@ function extractVenueFromTitle(title: string): { artist: string; venue: string |
 
 // ==================== FIRECRAWL ====================
 
-async function firecrawlScrapeJson(apiKey: string, url: string, schema: any, prompt: string, waitFor = 5000): Promise<any> {
+async function firecrawlScrapeJson(
+  apiKey: string,
+  url: string,
+  schema: any,
+  prompt: string,
+  waitFor = 5000,
+  onlyMainContent = true,
+): Promise<any> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ url, formats: ["json"], jsonOptions: { schema, prompt }, onlyMainContent: true, waitFor }),
+      body: JSON.stringify({
+        url,
+        formats: ["json"],
+        jsonOptions: { schema, prompt },
+        onlyMainContent,
+        waitFor,
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
     const data = await response.json();
-    if (!response.ok) { console.error(`Firecrawl error for ${url}:`, data); return null; }
+    if (!response.ok) {
+      console.error(`Firecrawl error for ${url}:`, data);
+      return null;
+    }
     return data?.data?.json || data?.json || null;
   } catch (err) {
     clearTimeout(timeout);
@@ -321,6 +337,47 @@ async function firecrawlScrapeLinks(apiKey: string, url: string, waitFor = 5000)
     clearTimeout(timeout);
     console.error(`Firecrawl links fetch error for ${url}:`, err);
     return [];
+  }
+}
+
+async function firecrawlScrapeJsonAndLinks(
+  apiKey: string,
+  url: string,
+  schema: any,
+  prompt: string,
+  waitFor = 5000,
+  onlyMainContent = true,
+): Promise<{ json: any | null; links: string[]; markdown: string | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        formats: ["json", "links", "markdown"],
+        jsonOptions: { schema, prompt },
+        onlyMainContent,
+        waitFor,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (!response.ok) {
+      console.error(`Firecrawl json+links error for ${url}:`, data);
+      return { json: null, links: [], markdown: null };
+    }
+    return {
+      json: data?.data?.json || data?.json || null,
+      links: (data?.data?.links || data?.links || []) as string[],
+      markdown: data?.data?.markdown || data?.markdown || null,
+    };
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`Firecrawl json+links fetch error for ${url}:`, err);
+    return { json: null, links: [], markdown: null };
   }
 }
 
@@ -1728,7 +1785,7 @@ Deno.serve(async (req) => {
         await delay(2000);
       }
 
-      // Resident Advisor — scrape pages 1-3 explicitly for fuller coverage
+      // Resident Advisor — scrape pages 1–3 explicitly and verify coverage vs live listing links
       if (hasTimeBudget()) {
         const raSchema = {
           type: "object",
@@ -1741,7 +1798,7 @@ Deno.serve(async (req) => {
                   artist: { type: "string", description: "Main artist/DJ name or event title" },
                   venue: { type: "string", description: "Venue name" },
                   date: { type: "string", description: "Event date in ISO 8601" },
-                  ticket_url: { type: "string", description: "Ticket URL or event page URL" },
+                  ticket_url: { type: "string", description: "Event page URL (preferred) or ticket URL" },
                   image_url: { type: "string", description: "Event image URL" },
                 },
                 required: ["artist", "venue", "date"],
@@ -1757,47 +1814,134 @@ Deno.serve(async (req) => {
           "https://ra.co/events/se/stockholm?page=3",
         ];
 
+        const isRaVenueAllowed = (venue: string) => {
+          if (isInvalidVenue(venue)) return false;
+          const lower = venue.toLowerCase();
+          if (NON_STOCKHOLM_VENUES.some((v) => lower.includes(v))) return false;
+          return true; // RA is already Stockholm-scoped
+        };
+
+        const normalizeRaEventUrl = (raw: string, baseOrigin: string): string | null => {
+          try {
+            const abs = raw.startsWith("/") ? `${baseOrigin}${raw}` : raw;
+            const u = new URL(abs);
+            if (u.hostname !== "ra.co") return null;
+            const match = u.pathname.match(/^\/events\/(\d+)/);
+            if (!match) return null;
+            return `https://ra.co/events/${match[1]}`;
+          } catch {
+            return null;
+          }
+        };
+
         const raEvents: ScrapedEvent[] = [];
         const raSeenKeys = new Set<string>();
 
-        for (const raPageUrl of raPages) {
+        for (let i = 0; i < raPages.length; i++) {
+          const raPageUrl = raPages[i];
           if (!hasTimeBudget()) break;
+
+          const pageStart = Date.now();
           console.log(`Gap-fill: Resident Advisor (${raPageUrl})`);
 
-          const raResult = await firecrawlScrapeJson(
-            firecrawlKey,
-            raPageUrl,
-            raSchema,
-            "Extract ALL music events/DJ nights listed on this page. For each: artist or event name, venue name, date (ISO 8601, 2026), ticket/event URL, image URL. Stockholm only.",
-            12000
-          );
+          const baseOrigin = (() => {
+            try {
+              return new URL(raPageUrl).origin;
+            } catch {
+              return "https://ra.co";
+            }
+          })();
 
-          const pageEvents: ScrapedEvent[] = (raResult?.events || [])
-            .filter((e: any) => e.artist && e.venue && e.date && !isInvalidVenue(e.venue))
-            .map((e: any) => ({
-              artist: e.artist.split(/[:\-–—|]/)[0].trim(),
-              venue: normalizeVenueName(e.venue),
-              date: e.date,
-              ticket_url: e.ticket_url || null,
-              tickets_available: true,
-              image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
-              event_type: "concert",
-              source: "Resident Advisor",
-              source_url: e.ticket_url || raPageUrl,
-            }))
-            .filter((e: ScrapedEvent) => isStockholmVenue(e.venue));
+          const scrapePass = async (passLabel: string, waitFor: number) => {
+            if (!hasTimeBudget()) return { accepted: 0, liveCount: 0 };
 
-          let accepted = 0;
-          for (const e of pageEvents) {
-            const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
-            if (raSeenKeys.has(key)) continue;
-            raSeenKeys.add(key);
-            raEvents.push(e);
-            accepted++;
+            const { json, links, markdown } = await firecrawlScrapeJsonAndLinks(
+              firecrawlKey,
+              raPageUrl,
+              raSchema,
+              `Extract ALL events listed on this Resident Advisor Stockholm listing page (no omissions).\n- Return one item per visible event card\n- Use year 2026 when year is not shown\n- Provide the RA event page URL in ticket_url when possible\n- Venue must be the on-card venue name`,
+              waitFor,
+              false,
+            );
+
+            let liveEventLinks = Array.from(
+              new Set(
+                (links || [])
+                  .map((l) => normalizeRaEventUrl(l, baseOrigin))
+                  .filter((l): l is string => Boolean(l)),
+              ),
+            );
+
+            // Fallback: RA sometimes returns empty `links`; count event URLs in markdown instead.
+            if (liveEventLinks.length === 0 && markdown) {
+              const ids = Array.from(
+                new Set(
+                  Array.from(markdown.matchAll(/\/events\/(\d+)/g)).map((m) => m[1]),
+                ),
+              );
+              liveEventLinks = ids.map((id) => `https://ra.co/events/${id}`);
+            }
+
+            const liveCount = liveEventLinks.length;
+
+            const pageEvents: ScrapedEvent[] = ((json?.events || []) as any[])
+              .filter((e) => e?.artist && e?.venue && e?.date)
+              .map((e) => {
+                const ticketUrl = isValidTicketUrl(e.ticket_url) ? e.ticket_url : null;
+                const venue = normalizeVenueName(String(e.venue));
+                return {
+                  artist: String(e.artist).split(/[:\-–—|]/)[0].trim(),
+                  venue,
+                  date: String(e.date),
+                  ticket_url: ticketUrl,
+                  tickets_available: true,
+                  image_url: isValidImageUrl(e.image_url) ? e.image_url : null,
+                  event_type: "concert",
+                  source: "Resident Advisor",
+                  source_url: ticketUrl || raPageUrl,
+                };
+              })
+              .filter((e) => isRaVenueAllowed(e.venue));
+
+            let accepted = 0;
+            for (const e of pageEvents) {
+              const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
+              if (raSeenKeys.has(key)) continue;
+              raSeenKeys.add(key);
+              raEvents.push(e);
+              accepted++;
+            }
+
+            console.log(`Resident Advisor (${raPageUrl}) ${passLabel}: +${accepted} accepted (live=${liveCount})`);
+            return { accepted, liveCount };
+          };
+
+          const pass1 = await scrapePass("pass1", 8000);
+          let acceptedTotal = pass1.accepted;
+          let liveCount = pass1.liveCount;
+
+          // Retry once if we appear to be missing events vs the live link count.
+          if (liveCount > 0 && acceptedTotal < liveCount) {
+            console.warn(
+              `Resident Advisor coverage warning (${raPageUrl}): extracted=${acceptedTotal} live=${liveCount} — retrying`,
+            );
+            const pass2 = await scrapePass("pass2", 11000);
+            acceptedTotal += pass2.accepted;
+            liveCount = Math.max(liveCount, pass2.liveCount);
           }
 
-          console.log(`Resident Advisor (${raPageUrl}): ${accepted} events`);
-          await delay(1200);
+          const mismatch = liveCount > 0 && acceptedTotal < liveCount;
+          await supabase.from("scrape_log").insert({
+            batch: targetBatch,
+            source: `resident-advisor-p${i + 1}`,
+            events_found: liveCount || null,
+            events_upserted: acceptedTotal,
+            duration_ms: Date.now() - pageStart,
+            error: mismatch ? `coverage_mismatch live=${liveCount} extracted=${acceptedTotal}` : null,
+          });
+
+          console.log(`Resident Advisor (${raPageUrl}): accepted=${acceptedTotal} live=${liveCount}`);
+          await delay(900);
         }
 
         if (raEvents.length > 0) {
