@@ -1245,13 +1245,19 @@ Deno.serve(async (req) => {
         );
       }
 
-      // CRITICAL FIX:
-      // Do NOT partition by batch number; in practice only batch 4 may run reliably,
-      // and partitioning strands some URLs forever (e.g. the far-future “tail” links).
-      // Instead, process the whole deduped queue until the time budget runs out.
-      const slice = queued
-        .slice()
-        .sort((a: any, b: any) => {
+      // Prioritize newly discovered unresolved URLs from the most recent scrape runs,
+      // then continue draining historical backlog.
+      const FRESH_WINDOW_MS = 6 * 60 * 60 * 1000;
+      const freshCutoff = Date.now() - FRESH_WINDOW_MS;
+
+      const freshQueued = queued.filter((it: any) => {
+        const t = Date.parse(String(it?.__queued_at || ""));
+        return Number.isFinite(t) && t >= freshCutoff;
+      });
+      const backlogQueued = queued.filter((it: any) => !freshQueued.includes(it));
+
+      const sortByDateAsc = (arr: any[]) =>
+        arr.slice().sort((a: any, b: any) => {
           const ta = Date.parse(String(a?.date || ""));
           const tb = Date.parse(String(b?.date || ""));
           if (Number.isFinite(ta) && Number.isFinite(tb)) return ta - tb;
@@ -1259,6 +1265,9 @@ Deno.serve(async (req) => {
           if (Number.isFinite(tb)) return 1;
           return 0;
         });
+
+      // Keep near-term ordering inside each bucket, but always process fresh queue first.
+      const slice = [...sortByDateAsc(freshQueued), ...sortByDateAsc(backlogQueued)];
 
        // Fair scheduling: the queue can be huge (10k+), and strict date-order processing starves late-year events.
        // Build a month-bucketed round-robin worklist so each invocation touches *all* months (including late 2026).
