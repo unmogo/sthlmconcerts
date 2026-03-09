@@ -1561,7 +1561,11 @@ Deno.serve(async (req) => {
             const chunkUrls = urlsForEvents.splice(0, FLUSH_SIZE);
             try {
               await upsertEvents(chunkEvents);
-              await persistProcessedUrls(chunkUrls);
+              const persistableUrls = await resolvePersistableUrls(chunkEvents, chunkUrls);
+              if (persistableUrls.length < chunkUrls.length) {
+                console.warn(`Venue resolution flush: deferred ${chunkUrls.length - persistableUrls.length}/${chunkUrls.length} URLs for retry`);
+              }
+              await persistProcessedUrls(persistableUrls);
             } catch (e) {
               console.error(`Batch upsert failed: ${e?.message || e}`);
             }
@@ -1573,7 +1577,11 @@ Deno.serve(async (req) => {
         if (events.length > 0) {
           try {
             await upsertEvents(events);
-            await persistProcessedUrls(urlsForEvents);
+            const persistableUrls = await resolvePersistableUrls(events, urlsForEvents);
+            if (persistableUrls.length < urlsForEvents.length) {
+              console.warn(`Venue resolution final flush: deferred ${urlsForEvents.length - persistableUrls.length}/${urlsForEvents.length} URLs for retry`);
+            }
+            await persistProcessedUrls(persistableUrls);
           } catch (e) {
             console.error(`Final upsert failed: ${e?.message || e}`);
           }
