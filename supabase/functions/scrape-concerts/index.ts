@@ -1392,6 +1392,36 @@ Deno.serve(async (req) => {
           progressed += urls.length;
         };
 
+        const resolvePersistableUrls = async (chunkEvents: ScrapedEvent[], chunkUrls: string[]) => {
+          const resolved = new Set<string>();
+
+          // If an item maps to a deleted concert key, mark it as processed so it won't reappear.
+          for (const e of chunkEvents) {
+            const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
+            if (deletedKeys.has(key) && e.source_url) {
+              resolved.add(canonicalizeUrl(e.source_url));
+            }
+          }
+
+          // Mark as processed only URLs that actually exist in concerts after upsert.
+          const { data, error } = await supabase
+            .from("concerts")
+            .select("source_url")
+            .eq("source", "evently")
+            .in("source_url", chunkUrls);
+
+          if (error) {
+            console.error("Failed to confirm persisted Evently URLs:", error.message);
+            return Array.from(resolved);
+          }
+
+          for (const row of data || []) {
+            const url = canonicalizeUrl(String((row as any).source_url || ""));
+            if (url) resolved.add(url);
+          }
+
+          return Array.from(resolved);
+        };
 
         const FLUSH_SIZE = 50;
         const CONCURRENCY = 5;
