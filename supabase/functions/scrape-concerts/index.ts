@@ -510,8 +510,14 @@ Deno.serve(async (req) => {
       let count = 0;
       for (const e of events) {
         e.venue = normalizeVenueName(e.venue);
-        if (isInvalidVenue(e.venue)) continue;
-        if (!isStockholmVenue(e.venue)) continue;
+
+        // Evently listings are already Stockholm-scoped; allow unknown venues,
+        // but still reject placeholders and known non-Stockholm venues.
+        const venueOk = e.source === "evently"
+          ? isEventlyVenueAllowed(e.venue)
+          : (!isInvalidVenue(e.venue) && isStockholmVenue(e.venue));
+
+        if (!venueOk) continue;
 
         const key = `${normalizeArtist(e.artist)}|${normalizeVenueKey(e.venue)}|${dateOnly(e.date)}`;
         if (deletedKeys.has(key)) continue;
