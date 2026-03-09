@@ -326,7 +326,8 @@ async function firecrawlScrapeLinks(apiKey: string, url: string, waitFor = 5000)
 
 async function firecrawlMap(apiKey: string, url: string, search?: string): Promise<string[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  // Mapping can take longer than a scrape on long / JS-heavy listing pages.
+  const timeout = setTimeout(() => controller.abort(), 90_000);
   try {
     const response = await fetch("https://api.firecrawl.dev/v1/map", {
       method: "POST",
@@ -671,7 +672,15 @@ Deno.serve(async (req) => {
         // 2) Safety net: scrape all links from the listing (more reliable than markdown on very long pages)
         // and queue any missing event URLs into evently-needs-venue so batches 4–10 can resolve venue + upsert.
         try {
-          const listingLinks = await firecrawlScrapeLinks(firecrawlKey, listingUrl, 15000);
+          // Prefer Firecrawl Map (typically much higher link coverage than scrape-links on long pages),
+          // then fall back to scrape-links if map returns too few results.
+          let listingLinks = await firecrawlMap(firecrawlKey, listingUrl, "/en/events/");
+          if (!Array.isArray(listingLinks) || listingLinks.length < 200) {
+            const scrapedLinks = await firecrawlScrapeLinks(firecrawlKey, listingUrl, 15000);
+            if (Array.isArray(scrapedLinks) && scrapedLinks.length > (Array.isArray(listingLinks) ? listingLinks.length : 0)) {
+              listingLinks = scrapedLinks;
+            }
+          }
 
           const normalizeLink = (l: string) => {
             const trimmed = (l || "").trim();
@@ -1129,12 +1138,14 @@ Deno.serve(async (req) => {
       // PostgREST enforces a default max of 1000 rows per request; we must page
       // or tail URLs will fall out of the window.
       const PAGE_SIZE = 1000;
-      async function fetchLogErrorsBySource(source: string, maxRows: number): Promise<string[]> {
-        const out: string[] = [];
+      type QueueLogEntry = { error: string; created_at: string | null };
+
+      async function fetchLogErrorsBySource(source: string, maxRows: number): Promise<QueueLogEntry[]> {
+        const out: QueueLogEntry[] = [];
         for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
           const { data, error } = await supabase
             .from("scrape_log")
-            .select("error")
+            .select("error, created_at")
             .eq("source", source)
             .order("created_at", { ascending: false })
             .range(offset, offset + PAGE_SIZE - 1);
@@ -1145,7 +1156,12 @@ Deno.serve(async (req) => {
           }
           if (!data || data.length === 0) break;
 
-          for (const row of data) out.push(row.error || "");
+          for (const row of data) {
+            out.push({
+              error: String(row.error || ""),
+              created_at: row.created_at || null,
+            });
+          }
 
           // Stop early if we're just debugging and we already have all URLs covered.
           if (debugUrlSet.size > 0) {
@@ -1160,14 +1176,14 @@ Deno.serve(async (req) => {
         return out;
       }
 
-       // Limit how much historical queue state we load per invocation; the queue is re-populated frequently,
-       // and loading thousands of scrape_log rows is expensive and can starve actual processing time.
-       const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 600);
-       const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 1200);
-
+      // Limit how much historical queue state we load per invocation; the queue is re-populated frequently,
+      // and loading thousands of scrape_log rows is expensive and can starve actual processing time.
+      const logEntryErrors = await fetchLogErrorsBySource("evently-needs-venue", 600);
+      const processedEntryErrors = await fetchLogErrorsBySource("evently-venue-processed", 1200);
       // Keep a lightweight "done" set to avoid repeatedly spending time on the same URLs.
       const processedUrls = new Set<string>();
-      for (const raw of processedEntryErrors) {
+      for (const row of processedEntryErrors) {
+        const raw = row.error;
         try {
           const arr = JSON.parse(raw || "[]");
           for (const u of arr || []) {
@@ -1179,13 +1195,18 @@ Deno.serve(async (req) => {
       }
 
       let queued: any[] = [];
-      for (const raw of logEntryErrors) {
+      for (const row of logEntryErrors) {
+        const raw = row.error;
         try {
           const parsed = JSON.parse(raw || "[]");
           const items = parsed
             .map((item: string) => {
               try {
-                return JSON.parse(item);
+                const p = JSON.parse(item);
+                if (p && typeof p === "object") {
+                  (p as any).__queued_at = row.created_at || null;
+                }
+                return p;
               } catch {
                 return null;
               }
@@ -1224,13 +1245,19 @@ Deno.serve(async (req) => {
         );
       }
 
-      // CRITICAL FIX:
-      // Do NOT partition by batch number; in practice only batch 4 may run reliably,
-      // and partitioning strands some URLs forever (e.g. the far-future “tail” links).
-      // Instead, process the whole deduped queue until the time budget runs out.
-      const slice = queued
-        .slice()
-        .sort((a: any, b: any) => {
+      // Prioritize newly discovered unresolved URLs from the most recent scrape runs,
+      // then continue draining historical backlog.
+      const FRESH_WINDOW_MS = 6 * 60 * 60 * 1000;
+      const freshCutoff = Date.now() - FRESH_WINDOW_MS;
+
+      const freshQueued = queued.filter((it: any) => {
+        const t = Date.parse(String(it?.__queued_at || ""));
+        return Number.isFinite(t) && t >= freshCutoff;
+      });
+      const backlogQueued = queued.filter((it: any) => !freshQueued.includes(it));
+
+      const sortByDateAsc = (arr: any[]) =>
+        arr.slice().sort((a: any, b: any) => {
           const ta = Date.parse(String(a?.date || ""));
           const tb = Date.parse(String(b?.date || ""));
           if (Number.isFinite(ta) && Number.isFinite(tb)) return ta - tb;
@@ -1238,6 +1265,9 @@ Deno.serve(async (req) => {
           if (Number.isFinite(tb)) return 1;
           return 0;
         });
+
+      // Keep near-term ordering inside each bucket, but always process fresh queue first.
+      const slice = [...sortByDateAsc(freshQueued), ...sortByDateAsc(backlogQueued)];
 
        // Fair scheduling: the queue can be huge (10k+), and strict date-order processing starves late-year events.
        // Build a month-bucketed round-robin worklist so each invocation touches *all* months (including late 2026).
@@ -1374,7 +1404,7 @@ Deno.serve(async (req) => {
               item.url,
               detailSchema,
               "Extract: venue name (NOT 'Stockholm, Sweden' — the actual venue/location), street address, ticket URL, ticket availability, image URL.",
-              8000
+              5000
             );
 
             if (detail) {
