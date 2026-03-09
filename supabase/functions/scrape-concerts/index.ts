@@ -1855,7 +1855,7 @@ Deno.serve(async (req) => {
           const scrapePass = async (passLabel: string, waitFor: number) => {
             if (!hasTimeBudget()) return { accepted: 0, liveCount: 0 };
 
-            const { json, links } = await firecrawlScrapeJsonAndLinks(
+            const { json, links, markdown } = await firecrawlScrapeJsonAndLinks(
               firecrawlKey,
               raPageUrl,
               raSchema,
@@ -1864,13 +1864,24 @@ Deno.serve(async (req) => {
               false,
             );
 
-            const liveEventLinks = Array.from(
+            let liveEventLinks = Array.from(
               new Set(
                 (links || [])
                   .map((l) => normalizeRaEventUrl(l, baseOrigin))
                   .filter((l): l is string => Boolean(l)),
               ),
             );
+
+            // Fallback: RA sometimes returns empty `links`; count event URLs in markdown instead.
+            if (liveEventLinks.length === 0 && markdown) {
+              const ids = Array.from(
+                new Set(
+                  Array.from(markdown.matchAll(/\/events\/(\d+)/g)).map((m) => m[1]),
+                ),
+              );
+              liveEventLinks = ids.map((id) => `https://ra.co/events/${id}`);
+            }
+
             const liveCount = liveEventLinks.length;
 
             const pageEvents: ScrapedEvent[] = ((json?.events || []) as any[])
