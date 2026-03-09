@@ -2,13 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchConcerts } from "@/lib/api/concerts";
 import { ConcertCard } from "./ConcertCard";
 import { Loader2, Music, Heart } from "lucide-react";
-import type { Concert, EventType } from "@/types/concert";
+import type { Concert, FilterType } from "@/types/concert";
 import { useMemo } from "react";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-
-type FilterType = EventType | "all" | "favorites";
+import { groupConcerts, filterBySearch } from "@/lib/utils/concert-utils";
 
 interface ConcertGridProps {
   selectedIds: string[];
