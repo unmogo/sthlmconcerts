@@ -594,15 +594,20 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Store unresolved for batches 4-5
+        // Store unresolved for venue resolution batches (4..10)
         if (unresolved.length > 0) {
-          await supabase.from("scrape_log").insert({
-            batch: targetBatch,
-            source: "evently-needs-venue",
-            events_found: unresolved.length,
-            events_upserted: 0,
-            error: JSON.stringify(unresolved.slice(0, 500)),
-          });
+          // Split into chunks to avoid row size limits and to ensure we don't drop tail events.
+          const chunkSize = 250;
+          for (let i = 0; i < unresolved.length; i += chunkSize) {
+            const chunk = unresolved.slice(i, i + chunkSize);
+            await supabase.from("scrape_log").insert({
+              batch: targetBatch,
+              source: "evently-needs-venue",
+              events_found: chunk.length,
+              events_upserted: 0,
+              error: JSON.stringify(chunk),
+            });
+          }
         }
 
         return events;
@@ -852,7 +857,7 @@ Deno.serve(async (req) => {
         .select("error")
         .eq("source", "evently-needs-venue")
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(50);
 
       let queued: any[] = [];
       for (const entry of logEntries || []) {
