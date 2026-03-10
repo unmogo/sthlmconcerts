@@ -159,8 +159,9 @@ Deno.serve(async (req) => {
 
         let ticketUrl: string | null = null;
         for (const link of links) {
-          if (isTicketSellerUrl(link)) {
-            ticketUrl = link;
+          const extracted = extractTicketUrl(link);
+          if (extracted) {
+            ticketUrl = extracted;
             break;
           }
         }
@@ -169,8 +170,9 @@ Deno.serve(async (req) => {
           const urlRegex = /https?:\/\/[^\s)\]>"]+/g;
           const mdUrls = markdown.match(urlRegex) || [];
           for (const u of mdUrls) {
-            if (isTicketSellerUrl(u)) {
-              ticketUrl = u;
+            const extracted = extractTicketUrl(u);
+            if (extracted) {
+              ticketUrl = extracted;
               break;
             }
           }
