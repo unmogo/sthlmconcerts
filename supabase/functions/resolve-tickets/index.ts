@@ -6,8 +6,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const BATCH_SIZE = 20;
-const TIME_BUDGET_MS = 240_000; // 4 minutes, leave margin for 900s wall clock
+const BATCH_SIZE = 50;
+const TIME_BUDGET_MS = 840_000; // 14 minutes, use most of the 900s wall clock
 
 const TICKET_SELLER_DOMAINS = [
   "ticketmaster.se", "ticketmaster.com",
@@ -26,13 +26,37 @@ const TICKET_SELLER_DOMAINS = [
   "tfrk.se", "mfrk.se",
 ];
 
-function isTicketSellerUrl(url: string): boolean {
+function extractTicketUrl(url: string): string | null {
   try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return TICKET_SELLER_DOMAINS.some((d) => hostname.includes(d));
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Check for affiliate redirect URLs (e.g., ticketmaster.evyy.net?u=https://ticketmaster.se/...)
+    if (hostname.includes("evyy.net") || hostname.includes("ffrk.se")) {
+      const targetUrl = parsed.searchParams.get("u") || parsed.searchParams.get("url");
+      if (targetUrl) {
+        try {
+          const targetHostname = new URL(targetUrl).hostname.toLowerCase();
+          if (TICKET_SELLER_DOMAINS.some((d) => targetHostname.includes(d))) {
+            return targetUrl;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Direct match
+    if (TICKET_SELLER_DOMAINS.some((d) => hostname.includes(d))) {
+      return url;
+    }
+
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isTicketSellerUrl(url: string): boolean {
+  return extractTicketUrl(url) !== null;
 }
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -135,8 +159,9 @@ Deno.serve(async (req) => {
 
         let ticketUrl: string | null = null;
         for (const link of links) {
-          if (isTicketSellerUrl(link)) {
-            ticketUrl = link;
+          const extracted = extractTicketUrl(link);
+          if (extracted) {
+            ticketUrl = extracted;
             break;
           }
         }
@@ -145,8 +170,9 @@ Deno.serve(async (req) => {
           const urlRegex = /https?:\/\/[^\s)\]>"]+/g;
           const mdUrls = markdown.match(urlRegex) || [];
           for (const u of mdUrls) {
-            if (isTicketSellerUrl(u)) {
-              ticketUrl = u;
+            const extracted = extractTicketUrl(u);
+            if (extracted) {
+              ticketUrl = extracted;
               break;
             }
           }
@@ -172,7 +198,7 @@ Deno.serve(async (req) => {
           failed++;
         }
 
-        await delay(800);
+        await delay(500);
       } catch (err) {
         console.error(`Error resolving ${concert.artist}:`, err);
         cache.set(eventlyUrl, null);
