@@ -172,7 +172,7 @@ Deno.serve(async (req) => {
           failed++;
         }
 
-        await delay(800);
+        await delay(500);
       } catch (err) {
         console.error(`Error resolving ${concert.artist}:`, err);
         cache.set(eventlyUrl, null);

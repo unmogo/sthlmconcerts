@@ -6,8 +6,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const BATCH_SIZE = 30;
-const TIME_BUDGET_MS = 240_000;
+const BATCH_SIZE = 50;
+const TIME_BUDGET_MS = 840_000;
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ==================== BAD IMAGE CHECK ====================
