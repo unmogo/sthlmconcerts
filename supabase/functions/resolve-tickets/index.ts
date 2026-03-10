@@ -26,13 +26,37 @@ const TICKET_SELLER_DOMAINS = [
   "tfrk.se", "mfrk.se",
 ];
 
-function isTicketSellerUrl(url: string): boolean {
+function extractTicketUrl(url: string): string | null {
   try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return TICKET_SELLER_DOMAINS.some((d) => hostname.includes(d));
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Check for affiliate redirect URLs (e.g., ticketmaster.evyy.net?u=https://ticketmaster.se/...)
+    if (hostname.includes("evyy.net") || hostname.includes("ffrk.se")) {
+      const targetUrl = parsed.searchParams.get("u") || parsed.searchParams.get("url");
+      if (targetUrl) {
+        try {
+          const targetHostname = new URL(targetUrl).hostname.toLowerCase();
+          if (TICKET_SELLER_DOMAINS.some((d) => targetHostname.includes(d))) {
+            return targetUrl;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Direct match
+    if (TICKET_SELLER_DOMAINS.some((d) => hostname.includes(d))) {
+      return url;
+    }
+
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isTicketSellerUrl(url: string): boolean {
+  return extractTicketUrl(url) !== null;
 }
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
