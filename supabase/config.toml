@@ -9,3 +9,8 @@ verify_jwt = false
 
 [functions.fetch-images]
 verify_jwt = false
+wall_clock_timeout = 900
+
+[functions.resolve-tickets]
+verify_jwt = false
+wall_clock_timeout = 900

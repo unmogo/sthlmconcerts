@@ -6,38 +6,24 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const BATCH_SIZE = 20;
+const TIME_BUDGET_MS = 240_000; // 4 minutes, leave margin for 900s wall clock
+
 const TICKET_SELLER_DOMAINS = [
-  "ticketmaster.se",
-  "ticketmaster.com",
-  "livenation.se",
-  "livenation.com",
-  "axs.com",
-  "tickster.com",
-  "billetto.se",
-  "billetto.com",
-  "nortic.se",
-  "bfrk.se",
-  "kulturhuset.stockholm.se",
-  "sodrateatern.com",
-  "konserthuset.se",
-  "cfrk.se",
-  "bfrk.se",
-  "trfrk.se",
-  "nalen.com",
-  "debaser.se",
-  "fasching.se",
-  "gfrk.se",
-  "gronalund.com",
-  "allthingslive.se",
-  "ticnet.se",
-  "eventim.se",
-  "eventbrite.com",
-  "dice.fm",
-  "ra.co",
-  "hfrk.se",
-  "strawberryarena.se",
-  "tfrk.se",
-  "mfrk.se",
+  "ticketmaster.se", "ticketmaster.com",
+  "livenation.se", "livenation.com",
+  "axs.com", "tickster.com",
+  "billetto.se", "billetto.com",
+  "nortic.se", "bfrk.se",
+  "kulturhuset.stockholm.se", "sodrateatern.com",
+  "konserthuset.se", "cfrk.se", "trfrk.se",
+  "nalen.com", "debaser.se", "fasching.se",
+  "gfrk.se", "gronalund.com",
+  "allthingslive.se", "ticnet.se",
+  "eventim.se", "eventbrite.com",
+  "dice.fm", "ra.co",
+  "hfrk.se", "strawberryarena.se",
+  "tfrk.se", "mfrk.se",
 ];
 
 function isTicketSellerUrl(url: string): boolean {
@@ -69,37 +55,48 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Parse batch params
+    const body = await req.json().catch(() => ({}));
+    const offset = body.offset || 0;
+    const chain = body.chain !== false; // default true
+
     // Find concerts with evently ticket URLs
     const { data: concerts, error } = await supabase
       .from("concerts")
       .select("id, artist, venue, date, ticket_url, source_url")
       .gte("date", new Date().toISOString())
       .ilike("ticket_url", "%evently.se%")
-      .order("date", { ascending: true });
+      .order("date", { ascending: true })
+      .range(offset, offset + BATCH_SIZE - 1);
 
     if (error) throw error;
     if (!concerts || concerts.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, message: "No concerts with evently ticket URLs", updated: 0 }),
+        JSON.stringify({ success: true, message: `Done. No more concerts from offset ${offset}`, updated: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Found ${concerts.length} concerts with evently.se ticket URLs`);
+    console.log(`Batch offset=${offset}: processing ${concerts.length} concerts with evently.se ticket URLs`);
 
-    // Cache: evently URL → resolved ticket URL
+    const startTime = Date.now();
     const cache = new Map<string, string | null>();
     let updated = 0;
     let failed = 0;
 
     for (const concert of concerts) {
+      // Time guard
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log("Time budget exceeded, will continue in next batch");
+        break;
+      }
+
       const eventlyUrl = concert.ticket_url || concert.source_url;
       if (!eventlyUrl || !eventlyUrl.includes("evently.se")) {
         failed++;
         continue;
       }
 
-      // Check cache
       if (cache.has(eventlyUrl)) {
         const cached = cache.get(eventlyUrl);
         if (cached) {
@@ -112,7 +109,6 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // Scrape the evently detail page for links
         const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
           method: "POST",
           headers: {
@@ -137,7 +133,6 @@ Deno.serve(async (req) => {
         const links: string[] = scrapeData?.data?.links || scrapeData?.links || [];
         const markdown: string = scrapeData?.data?.markdown || scrapeData?.markdown || "";
 
-        // Strategy 1: Find a direct ticket seller link in the page links
         let ticketUrl: string | null = null;
         for (const link of links) {
           if (isTicketSellerUrl(link)) {
@@ -146,7 +141,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Strategy 2: Extract from markdown (sometimes ticket links are in button text)
         if (!ticketUrl) {
           const urlRegex = /https?:\/\/[^\s)\]>"]+/g;
           const mdUrls = markdown.match(urlRegex) || [];
@@ -178,7 +172,6 @@ Deno.serve(async (req) => {
           failed++;
         }
 
-        // Rate limit
         await delay(800);
       } catch (err) {
         console.error(`Error resolving ${concert.artist}:`, err);
@@ -187,11 +180,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    const message = `Resolved ${updated} ticket URLs, ${failed} unresolved, out of ${concerts.length} total`;
+    const message = `Batch offset=${offset}: resolved ${updated}, ${failed} unresolved, ${concerts.length} processed`;
     console.log(message);
 
+    // Chain to next batch if there are more
+    if (chain && concerts.length === BATCH_SIZE) {
+      const nextOffset = offset + BATCH_SIZE;
+      console.log(`Chaining to next batch at offset=${nextOffset}`);
+
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+      fetch(`${supabaseUrl}/functions/v1/resolve-tickets`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({ offset: nextOffset, chain: true }),
+      }).catch((err) => console.error("Chain call failed:", err));
+    }
+
     return new Response(
-      JSON.stringify({ success: true, message, updated, failed, total: concerts.length }),
+      JSON.stringify({ success: true, message, updated, failed, total: concerts.length, nextOffset: concerts.length === BATCH_SIZE ? offset + BATCH_SIZE : null }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

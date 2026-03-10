@@ -35,13 +35,17 @@ export async function triggerScrape(): Promise<{ success: boolean; message: stri
 }
 
 export async function triggerFetchImages(): Promise<{ success: boolean; message: string }> {
-  const { data, error } = await supabase.functions.invoke("fetch-images");
+  const { data, error } = await supabase.functions.invoke("fetch-images", {
+    body: { offset: 0, chain: true },
+  });
   if (error) throw error;
   return data;
 }
 
 export async function triggerResolveTickets(): Promise<{ success: boolean; message: string }> {
-  const { data, error } = await supabase.functions.invoke("resolve-tickets");
+  const { data, error } = await supabase.functions.invoke("resolve-tickets", {
+    body: { offset: 0, chain: true },
+  });
   if (error) throw error;
   return data;
 }
