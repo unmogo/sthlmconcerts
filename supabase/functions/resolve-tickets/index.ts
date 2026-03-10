@@ -6,8 +6,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const BATCH_SIZE = 20;
-const TIME_BUDGET_MS = 240_000; // 4 minutes, leave margin for 900s wall clock
+const BATCH_SIZE = 50;
+const TIME_BUDGET_MS = 840_000; // 14 minutes, use most of the 900s wall clock
 
 const TICKET_SELLER_DOMAINS = [
   "ticketmaster.se", "ticketmaster.com",
