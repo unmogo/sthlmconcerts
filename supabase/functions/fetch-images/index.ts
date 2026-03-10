@@ -21,6 +21,7 @@ function isBadImageUrl(url: string | null | undefined): boolean {
     lower.includes("konserthuset.se/globalassets") ||
     lower.includes("evently.se/api/file") ||
     lower.includes("evently.se/img/") ||
+    lower.includes("i.scdn.co") ||
     lower.includes("localhost") ||
     lower.includes("lovable.app") ||
     lower.includes("id-preview--")
