@@ -49,9 +49,6 @@ export async function triggerResolveTickets(): Promise<{ success: boolean; messa
   if (error) throw error;
   return data;
 }
-  if (error) throw error;
-  return data;
-}
 
 export async function deleteConcerts(ids: string[]): Promise<void> {
   const { error } = await supabase.functions.invoke("manage-concerts", {
