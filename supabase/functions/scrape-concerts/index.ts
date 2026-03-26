@@ -1666,6 +1666,7 @@ Deno.serve(async (req) => {
         { name: "Södra Teatern", url: "https://sodrateatern.com/", type: "concert" },
         { name: "Gröna Lund", url: "https://www.gronalund.com/en/concerts", type: "concert" },
         { name: "Stockholm Live", url: "https://stockholmlive.com/evenemang/", type: "concert" },
+        { name: "Annexet", url: "https://annexet.se/evenemang/musik-show/", type: "concert" },
       ];
       const prompt = "Extract ONLY music concerts. Artist name (clean, no tour subtitle), venue, date (ISO 8601, assume year 2026 if not specified), ticket URL, ticket availability. Stockholm only.";
       for (const src of sources) {
