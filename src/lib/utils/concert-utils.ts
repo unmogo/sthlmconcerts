@@ -1,5 +1,14 @@
 import type { Concert } from "@/types/concert";
 
+/**
+ * Parse a database timestamp as-is (local Stockholm time) without timezone shift.
+ * The DB stores times where the hour IS the local time, not actual UTC.
+ */
+export function parseLocalDate(dateStr: string): Date {
+  const stripped = dateStr.replace(/([+-]\d{2}(:\d{2})?|Z)$/, "");
+  return new Date(stripped);
+}
+
 // Venue alias normalization for consistent grouping
 const VENUE_ALIASES: Record<string, string> = {
   "friends arena": "Strawberry Arena",
