@@ -194,7 +194,28 @@ function extractImageCandidatesFromHtml(html: string, pageUrl: string): string[]
   return [...new Set(normalized)];
 }
 
-async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<boolean> {
+// Check if a candidate image is already used by 2+ different artists (venue logo)
+async function isSharedVenueImage(
+  supabase: ReturnType<typeof createClient>,
+  imageUrl: string,
+  currentArtist: string,
+): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("concerts")
+      .select("artist")
+      .eq("image_url", imageUrl)
+      .limit(5);
+    if (!data || data.length === 0) return false;
+    const otherArtists = new Set(
+      data.map((r: { artist: string }) => r.artist.toLowerCase()).filter((a: string) => a !== currentArtist.toLowerCase()),
+    );
+    return otherArtists.size >= 2;
+  } catch {
+    return false;
+  }
+}
+
   if (!url) return false;
   if (isBlockedImageUrl(url)) return false;
   if (isLikelyLogoOrPlaceholder(url)) return false;
@@ -484,18 +505,23 @@ Deno.serve(async (req) => {
 
       if (firecrawlKey) {
         imageUrl = await lookupSourcePageImage(concert.source_url, concert.ticket_url, firecrawlKey);
-        if (imageUrl) {
-          sourceHits++;
+        if (imageUrl && await isSharedVenueImage(supabase, imageUrl, concert.artist)) {
+          console.log(`Rejected shared venue image for ${concert.artist}: ${imageUrl}`);
+          imageUrl = null;
         }
+        if (imageUrl) sourceHits++;
       }
 
+      // Step 2: Search
       if (!imageUrl && firecrawlKey) {
         imageUrl = await lookupSearchImage(concert.artist, concert.venue, concert.date, firecrawlKey);
-        if (imageUrl) {
-          searchHits++;
+        if (imageUrl && await isSharedVenueImage(supabase, imageUrl, concert.artist)) {
+          imageUrl = null;
         }
+        if (imageUrl) searchHits++;
       }
 
+      // Step 3: Spotify
       if (!imageUrl) {
         const cacheKey = normalizeText(cleanArtistForLookup(concert.artist));
         if (spotifyCache.has(cacheKey)) {
@@ -504,7 +530,6 @@ Deno.serve(async (req) => {
           imageUrl = await lookupSpotifyImage(concert.artist);
           spotifyCache.set(cacheKey, imageUrl);
         }
-
         if (imageUrl) spotifyHits++;
       }
 
