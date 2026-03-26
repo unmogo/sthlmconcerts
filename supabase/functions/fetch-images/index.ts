@@ -64,20 +64,36 @@ function needsImageRefresh(url: string | null | undefined): boolean {
   );
 }
 
+// Known venue/promoter images that get reused across many artists
+const KNOWN_BAD_PATTERNS = [
+  "data:image",
+  "example.com",
+  "widget-launcher.imbox.io",
+  "konserthuset.se/globalassets",
+  "evently.se/api/file",
+  "evently.se/img/",
+  "localhost",
+  "lovable.app",
+  "id-preview--",
+  // Tickster venue logos
+  "static.tickster.com/cdn-cgi/image",
+  // Ticketmaster default event images
+  "ticketm.net/dam/",
+  "tmconst.com/ccp-salesforce",
+  // LiveNation shared promo
+  "dynamicmedia.livenationinternational.com",
+  // Feverup tiny thumbnails
+  "feverup.com/image/upload",
+  // Venue-specific logos
+  "strawberryarena.se/app/themes",
+  "aftonstjarnan.se/wp-content/uploads",
+  "google_play_badge",
+];
+
 function isBlockedImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
   const lower = url.toLowerCase();
-  return (
-    lower.startsWith("data:image") ||
-    lower.includes("example.com") ||
-    lower.includes("widget-launcher.imbox.io") ||
-    lower.includes("konserthuset.se/globalassets") ||
-    lower.includes("evently.se/api/file") ||
-    lower.includes("evently.se/img/") ||
-    lower.includes("localhost") ||
-    lower.includes("lovable.app") ||
-    lower.includes("id-preview--")
-  );
+  return KNOWN_BAD_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
 function isLikelyLogoOrPlaceholder(url: string): boolean {
@@ -89,6 +105,9 @@ function isLikelyLogoOrPlaceholder(url: string): boolean {
     lower.includes("sprite") ||
     lower.includes("placeholder") ||
     lower.includes("blank") ||
+    lower.includes("badge") ||
+    lower.includes("logga") ||
+    lower.includes("default-image") ||
     lower.endsWith(".svg")
   );
 }
@@ -419,7 +438,7 @@ Deno.serve(async (req) => {
       .from("concerts")
       .select("id, artist, venue, date, image_url, source_url, ticket_url")
       .gte("date", new Date().toISOString())
-      .or("source_url.ilike.%evently.se%,image_url.is.null,image_url.ilike.%data:image%,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%,image_url.ilike.%evently.se/img/%,image_url.ilike.%evently.se/api/file%,image_url.ilike.%i.scdn.co%,image_url.ilike.%placeholder%,image_url.ilike.%blank%")
+      .is("image_url", null)
       .order("id", { ascending: true })
       .limit(batchSize);
 
