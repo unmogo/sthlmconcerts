@@ -22,6 +22,7 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   const { user, isAdmin } = useAuth();
   const { favoriteIds, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
+  const ticketUrl = concert.ticket_url?.trim() || null;
 
   const concertDate = new Date(concert.date);
   const saleDate = concert.ticket_sale_date ? new Date(concert.ticket_sale_date) : null;
@@ -39,6 +40,18 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
       return;
     }
     toggleFavorite(concert.id);
+  };
+
+  const handleTicketClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!ticketUrl) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const newWindow = window.open(ticketUrl, "_blank", "noopener,noreferrer");
+    if (newWindow) {
+      newWindow.opener = null;
+    }
   };
 
   return (
@@ -174,11 +187,13 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
         )}
 
         {/* Action */}
-        {concert.ticket_url && (
+        {ticketUrl && (
           <a
-            href={concert.ticket_url}
+            href={ticketUrl}
             target="_blank"
             rel="noopener noreferrer"
+            referrerPolicy="no-referrer"
+            onClick={handleTicketClick}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-neon px-4 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
           >
             <Ticket className="h-4 w-4" />
