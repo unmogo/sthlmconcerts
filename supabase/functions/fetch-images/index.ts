@@ -216,6 +216,7 @@ async function isSharedVenueImage(
   }
 }
 
+async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<boolean> {
   if (!url) return false;
   if (isBlockedImageUrl(url)) return false;
   if (isLikelyLogoOrPlaceholder(url)) return false;
