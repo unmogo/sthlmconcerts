@@ -2,6 +2,7 @@ import { format, formatDistanceToNow, isFuture } from "date-fns";
 import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } from "lucide-react";
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
+import { parseLocalDate } from "@/lib/utils/concert-utils";
 import { EditConcertDialog } from "./EditConcertDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -24,8 +25,8 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   const navigate = useNavigate();
   const ticketUrl = concert.ticket_url?.trim() || null;
 
-  const concertDate = new Date(concert.date);
-  const saleDate = concert.ticket_sale_date ? new Date(concert.ticket_sale_date) : null;
+  const concertDate = parseLocalDate(concert.date);
+  const saleDate = concert.ticket_sale_date ? parseLocalDate(concert.ticket_sale_date) : null;
   const ticketsSelling = concert.tickets_available;
   const saleNotStarted = saleDate && isFuture(saleDate);
   const allDates = [concert, ...extraDates];
@@ -150,7 +151,7 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
         {/* Dates */}
         <div className="space-y-1 mb-3">
           {displayDates.map((d, i) => {
-            const dt = new Date(d.date);
+            const dt = parseLocalDate(d.date);
             return (
               <div key={d.id} className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Calendar className="h-3.5 w-3.5 text-accent/70 shrink-0" />
