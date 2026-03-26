@@ -478,10 +478,7 @@ Deno.serve(async (req) => {
       processed++;
       lastCursorId = concert.id;
 
-      const forceRefresh = isEventlyUrl(concert.source_url);
-      if (!forceRefresh && !needsImageRefresh(concert.image_url)) {
-        continue;
-      }
+      // Query already filters for image_url IS NULL, no skip needed
 
       let imageUrl: string | null = null;
 
@@ -524,21 +521,7 @@ Deno.serve(async (req) => {
           updated++;
         }
       } else {
-        if (concert.image_url !== null && needsImageRefresh(concert.image_url)) {
-          const { error: clearError } = await supabase
-            .from("concerts")
-            .update({ image_url: null })
-            .eq("id", concert.id);
-
-          if (clearError) {
-            unresolved++;
-            console.error(`Failed to clear image for ${concert.artist}:`, clearError.message);
-          } else {
-            cleared++;
-          }
-        } else {
-          unresolved++;
-        }
+        unresolved++;
       }
 
       await delay(250);
