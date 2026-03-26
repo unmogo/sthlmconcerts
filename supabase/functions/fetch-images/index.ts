@@ -64,20 +64,36 @@ function needsImageRefresh(url: string | null | undefined): boolean {
   );
 }
 
+// Known venue/promoter images that get reused across many artists
+const KNOWN_BAD_PATTERNS = [
+  "data:image",
+  "example.com",
+  "widget-launcher.imbox.io",
+  "konserthuset.se/globalassets",
+  "evently.se/api/file",
+  "evently.se/img/",
+  "localhost",
+  "lovable.app",
+  "id-preview--",
+  // Tickster venue logos
+  "static.tickster.com/cdn-cgi/image",
+  // Ticketmaster default event images
+  "ticketm.net/dam/",
+  "tmconst.com/ccp-salesforce",
+  // LiveNation shared promo
+  "dynamicmedia.livenationinternational.com",
+  // Feverup tiny thumbnails
+  "feverup.com/image/upload",
+  // Venue-specific logos
+  "strawberryarena.se/app/themes",
+  "aftonstjarnan.se/wp-content/uploads",
+  "google_play_badge",
+];
+
 function isBlockedImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
   const lower = url.toLowerCase();
-  return (
-    lower.startsWith("data:image") ||
-    lower.includes("example.com") ||
-    lower.includes("widget-launcher.imbox.io") ||
-    lower.includes("konserthuset.se/globalassets") ||
-    lower.includes("evently.se/api/file") ||
-    lower.includes("evently.se/img/") ||
-    lower.includes("localhost") ||
-    lower.includes("lovable.app") ||
-    lower.includes("id-preview--")
-  );
+  return KNOWN_BAD_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
 function isLikelyLogoOrPlaceholder(url: string): boolean {
@@ -89,6 +105,9 @@ function isLikelyLogoOrPlaceholder(url: string): boolean {
     lower.includes("sprite") ||
     lower.includes("placeholder") ||
     lower.includes("blank") ||
+    lower.includes("badge") ||
+    lower.includes("logga") ||
+    lower.includes("default-image") ||
     lower.endsWith(".svg")
   );
 }
@@ -173,6 +192,28 @@ function extractImageCandidatesFromHtml(html: string, pageUrl: string): string[]
     .filter((u): u is string => !!u);
 
   return [...new Set(normalized)];
+}
+
+// Check if a candidate image is already used by 2+ different artists (venue logo)
+async function isSharedVenueImage(
+  supabase: ReturnType<typeof createClient>,
+  imageUrl: string,
+  currentArtist: string,
+): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("concerts")
+      .select("artist")
+      .eq("image_url", imageUrl)
+      .limit(5);
+    if (!data || data.length === 0) return false;
+    const otherArtists = new Set(
+      data.map((r: { artist: string }) => r.artist.toLowerCase()).filter((a: string) => a !== currentArtist.toLowerCase()),
+    );
+    return otherArtists.size >= 2;
+  } catch {
+    return false;
+  }
 }
 
 async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<boolean> {
@@ -419,7 +460,7 @@ Deno.serve(async (req) => {
       .from("concerts")
       .select("id, artist, venue, date, image_url, source_url, ticket_url")
       .gte("date", new Date().toISOString())
-      .or("source_url.ilike.%evently.se%,image_url.is.null,image_url.ilike.%data:image%,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%,image_url.ilike.%evently.se/img/%,image_url.ilike.%evently.se/api/file%,image_url.ilike.%i.scdn.co%,image_url.ilike.%placeholder%,image_url.ilike.%blank%")
+      .is("image_url", null)
       .order("id", { ascending: true })
       .limit(batchSize);
 
@@ -459,27 +500,29 @@ Deno.serve(async (req) => {
       processed++;
       lastCursorId = concert.id;
 
-      const forceRefresh = isEventlyUrl(concert.source_url);
-      if (!forceRefresh && !needsImageRefresh(concert.image_url)) {
-        continue;
-      }
+      // Query already filters for image_url IS NULL, no skip needed
 
       let imageUrl: string | null = null;
 
       if (firecrawlKey) {
         imageUrl = await lookupSourcePageImage(concert.source_url, concert.ticket_url, firecrawlKey);
-        if (imageUrl) {
-          sourceHits++;
+        if (imageUrl && await isSharedVenueImage(supabase, imageUrl, concert.artist)) {
+          console.log(`Rejected shared venue image for ${concert.artist}: ${imageUrl}`);
+          imageUrl = null;
         }
+        if (imageUrl) sourceHits++;
       }
 
+      // Step 2: Search
       if (!imageUrl && firecrawlKey) {
         imageUrl = await lookupSearchImage(concert.artist, concert.venue, concert.date, firecrawlKey);
-        if (imageUrl) {
-          searchHits++;
+        if (imageUrl && await isSharedVenueImage(supabase, imageUrl, concert.artist)) {
+          imageUrl = null;
         }
+        if (imageUrl) searchHits++;
       }
 
+      // Step 3: Spotify
       if (!imageUrl) {
         const cacheKey = normalizeText(cleanArtistForLookup(concert.artist));
         if (spotifyCache.has(cacheKey)) {
@@ -488,7 +531,6 @@ Deno.serve(async (req) => {
           imageUrl = await lookupSpotifyImage(concert.artist);
           spotifyCache.set(cacheKey, imageUrl);
         }
-
         if (imageUrl) spotifyHits++;
       }
 
@@ -505,21 +547,7 @@ Deno.serve(async (req) => {
           updated++;
         }
       } else {
-        if (concert.image_url !== null && needsImageRefresh(concert.image_url)) {
-          const { error: clearError } = await supabase
-            .from("concerts")
-            .update({ image_url: null })
-            .eq("id", concert.id);
-
-          if (clearError) {
-            unresolved++;
-            console.error(`Failed to clear image for ${concert.artist}:`, clearError.message);
-          } else {
-            cleared++;
-          }
-        } else {
-          unresolved++;
-        }
+        unresolved++;
       }
 
       await delay(250);
