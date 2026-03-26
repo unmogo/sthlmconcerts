@@ -43,15 +43,9 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   };
 
   const handleTicketClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!ticketUrl) return;
-
-    e.preventDefault();
     e.stopPropagation();
-
-    const newWindow = window.open(ticketUrl, "_blank", "noopener,noreferrer");
-    if (newWindow) {
-      newWindow.opener = null;
-    }
+    // Let the native <a> handle navigation — no window.open override needed.
+    // The anchor already has target="_blank" rel="noopener noreferrer".
   };
 
   return (
