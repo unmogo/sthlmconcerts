@@ -82,7 +82,7 @@ export async function triggerScrape(): Promise<{ success: boolean; message: stri
 }
 
 export async function triggerFetchImages(): Promise<{ success: boolean; message: string }> {
-  return runMaintenanceJob("fetch-images", 25);
+  return runMaintenanceJob("fetch-images", 10);
 }
 
 export async function triggerResolveTickets(): Promise<{ success: boolean; message: string }> {

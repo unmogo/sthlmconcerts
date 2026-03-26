@@ -533,14 +533,14 @@ Deno.serve(async (req) => {
 
     if (shouldChain) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
-      fetchWithTimeout(`${supabaseUrl}/functions/v1/fetch-images`, {
+      fetch(`${supabaseUrl}/functions/v1/fetch-images`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${anonKey}`,
         },
         body: JSON.stringify({ cursorId: lastCursorId, chain: true, batchSize }),
-      }, 4_000).catch((err) => console.error("Chain call failed:", err));
+      }).catch((err) => console.error("Chain call failed:", err));
     }
 
     return new Response(
