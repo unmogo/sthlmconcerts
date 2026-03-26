@@ -186,7 +186,6 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
             href={ticketUrl}
             target="_blank"
             rel="noopener noreferrer"
-            referrerPolicy="no-referrer"
             onClick={handleTicketClick}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-neon px-4 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
           >
