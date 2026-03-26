@@ -18,8 +18,9 @@ async function runMaintenanceJob(
   let processed = 0;
   let updated = 0;
   let unresolved = 0;
+  const maxIterations = functionName === "fetch-images" ? 500 : 250;
 
-  for (let iteration = 0; iteration < 200; iteration++) {
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
     const { data, error } = await supabase.functions.invoke(functionName, {
       body: { chain: false, batchSize, cursorId },
     });
@@ -45,7 +46,7 @@ async function runMaintenanceJob(
     cursorId = nextCursorId;
   }
 
-  throw new Error(`${functionName} exceeded safe iteration limit`);
+  throw new Error(`${functionName} exceeded safe iteration limit (${maxIterations} batches)`);
 }
 
 export async function fetchConcerts(): Promise<Concert[]> {
