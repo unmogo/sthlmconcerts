@@ -14,6 +14,7 @@ const TICKET_SELLER_DOMAINS = [
   "livenation.se", "livenation.com",
   "axs.com", "tickster.com",
   "billetto.se", "billetto.com",
+  "feverup.com", "feverup.se", "fever.com",
   "nortic.se", "bfrk.se",
   "kulturhuset.stockholm.se", "sodrateatern.com",
   "konserthuset.se", "cfrk.se", "trfrk.se",
@@ -28,6 +29,12 @@ const TICKET_SELLER_DOMAINS = [
 
 const REDIRECT_HOSTS = ["evyy.net", "ffrk.se", "evently.se"];
 const URL_REGEX = /https?:\/\/[^\s)\]>"']+/gi;
+
+function isRedirectHostUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return REDIRECT_HOSTS.some((host) => lower.includes(host));
+}
 
 function isEventlyUrl(url: string | null | undefined): boolean {
   if (!url) return false;
@@ -114,7 +121,7 @@ function extractUrlsFromText(text: string): string[] {
 }
 
 function pickEventlyUrl(ticketUrl: string | null, sourceUrl: string | null): string | null {
-  if (ticketUrl && ticketUrl.includes("evently.se")) return ticketUrl;
+  if (ticketUrl && (isEventlyUrl(ticketUrl) || isRedirectHostUrl(ticketUrl))) return ticketUrl;
   if (!ticketUrl && sourceUrl && sourceUrl.includes("evently.se")) return sourceUrl;
   return null;
 }
@@ -255,7 +262,7 @@ Deno.serve(async (req) => {
       .from("concerts")
       .select("id, artist, venue, date, ticket_url, source_url")
       .gte("date", new Date().toISOString())
-      .or("ticket_url.ilike.%evently.se%,and(ticket_url.is.null,source_url.ilike.%evently.se%)")
+      .or("ticket_url.ilike.%evently.se%,ticket_url.ilike.%evyy.net%,ticket_url.ilike.%ffrk.se%,and(ticket_url.is.null,source_url.ilike.%evently.se%)")
       .order("id", { ascending: true })
       .limit(batchSize);
 

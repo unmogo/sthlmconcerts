@@ -86,7 +86,7 @@ export async function triggerFetchImages(): Promise<{ success: boolean; message:
 }
 
 export async function triggerResolveTickets(): Promise<{ success: boolean; message: string }> {
-  return runMaintenanceJob("resolve-tickets", 25);
+  return runMaintenanceJob("resolve-tickets", 40);
 }
 
 export async function deleteConcerts(ids: string[]): Promise<void> {
