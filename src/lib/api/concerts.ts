@@ -1,6 +1,53 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Concert } from "@/types/concert";
 
+type MaintenanceResponse = {
+  success: boolean;
+  message: string;
+  nextCursorId?: string | null;
+  processed?: number;
+  updated?: number;
+  unresolved?: number;
+};
+
+async function runMaintenanceJob(
+  functionName: "fetch-images" | "resolve-tickets",
+  batchSize: number,
+): Promise<{ success: boolean; message: string }> {
+  let cursorId: string | null = null;
+  let processed = 0;
+  let updated = 0;
+  let unresolved = 0;
+
+  for (let iteration = 0; iteration < 200; iteration++) {
+    const { data, error } = await supabase.functions.invoke(functionName, {
+      body: { chain: false, batchSize, cursorId },
+    });
+
+    if (error) throw error;
+
+    const result = (data || {}) as MaintenanceResponse;
+    processed += Number(result.processed || 0);
+    updated += Number(result.updated || 0);
+    unresolved += Number(result.unresolved || 0);
+
+    const nextCursorId = typeof result.nextCursorId === "string" && result.nextCursorId.length > 0
+      ? result.nextCursorId
+      : null;
+
+    if (!nextCursorId) {
+      return {
+        success: result.success !== false,
+        message: `Done: processed ${processed}, updated ${updated}, unresolved ${unresolved}`,
+      };
+    }
+
+    cursorId = nextCursorId;
+  }
+
+  throw new Error(`${functionName} exceeded safe iteration limit`);
+}
+
 export async function fetchConcerts(): Promise<Concert[]> {
   // PostgREST defaults to 1000 rows; paginate so late-year concerts don’t “disappear” in the UI.
   const pageSize = 1000;
@@ -35,19 +82,11 @@ export async function triggerScrape(): Promise<{ success: boolean; message: stri
 }
 
 export async function triggerFetchImages(): Promise<{ success: boolean; message: string }> {
-  const { data, error } = await supabase.functions.invoke("fetch-images", {
-    body: { chain: true },
-  });
-  if (error) throw error;
-  return data;
+  return runMaintenanceJob("fetch-images", 25);
 }
 
 export async function triggerResolveTickets(): Promise<{ success: boolean; message: string }> {
-  const { data, error } = await supabase.functions.invoke("resolve-tickets", {
-    body: { chain: true },
-  });
-  if (error) throw error;
-  return data;
+  return runMaintenanceJob("resolve-tickets", 25);
 }
 
 export async function deleteConcerts(ids: string[]): Promise<void> {

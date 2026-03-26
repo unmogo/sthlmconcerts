@@ -29,6 +29,15 @@ const TICKET_SELLER_DOMAINS = [
 const REDIRECT_HOSTS = ["evyy.net", "ffrk.se", "evently.se"];
 const URL_REGEX = /https?:\/\/[^\s)\]>"']+/gi;
 
+function isEventlyUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname.toLowerCase().includes("evently.se");
+  } catch {
+    return url.toLowerCase().includes("evently.se");
+  }
+}
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 15_000): Promise<Response> {
@@ -112,6 +121,25 @@ function pickEventlyUrl(ticketUrl: string | null, sourceUrl: string | null): str
 
 async function lookupTicketUrlFromPage(url: string, firecrawlKey: string): Promise<string | null> {
   try {
+    const rawRes = await fetchWithTimeout(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; STHLMConcertsBot/1.0)",
+      },
+    }, 12_000);
+
+    if (rawRes.ok) {
+      const rawHtml = await rawRes.text();
+      const rawCandidates = [
+        ...Array.from(rawHtml.matchAll(/href=["']([^"']+)["']/gi)).map((m) => m[1]),
+        ...extractUrlsFromText(rawHtml),
+      ];
+
+      for (const candidate of rawCandidates) {
+        const extracted = extractTicketUrl(candidate);
+        if (extracted) return extracted;
+      }
+    }
+
     const scrapeRes = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: {
@@ -302,7 +330,8 @@ Deno.serve(async (req) => {
     const message = `Batch cursor=${cursorId ?? "start"}: processed ${processed}/${concerts.length}, updated ${updated} (page: ${pageHits}, search: ${searchHits}), ${unresolved} unresolved`;
     console.log(message);
 
-    const shouldChain = chain && !!lastCursorId && processed > 0 && (timedOut || concerts.length === batchSize);
+    const hasMore = !!lastCursorId && processed > 0 && (timedOut || concerts.length === batchSize);
+    const shouldChain = chain && hasMore;
 
     if (shouldChain) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
@@ -325,7 +354,7 @@ Deno.serve(async (req) => {
         unresolved,
         pageHits,
         searchHits,
-        nextCursorId: shouldChain ? lastCursorId : null,
+        nextCursorId: hasMore ? lastCursorId : null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

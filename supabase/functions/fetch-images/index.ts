@@ -10,6 +10,15 @@ const DEFAULT_BATCH_SIZE = 30;
 const TIME_BUDGET_MS = 840_000;
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function isEventlyUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname.toLowerCase().includes("evently.se");
+  } catch {
+    return url.toLowerCase().includes("evently.se");
+  }
+}
+
 let spotifyToken: string | null = null;
 let spotifyTokenExpiry = 0;
 
@@ -40,6 +49,7 @@ function needsImageRefresh(url: string | null | undefined): boolean {
   if (!url) return true;
   const lower = url.toLowerCase();
   return (
+    lower.startsWith("data:image") ||
     lower.includes("example.com") ||
     lower.includes("widget-launcher.imbox.io") ||
     lower.includes("konserthuset.se/globalassets") ||
@@ -58,6 +68,7 @@ function isBlockedImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
   const lower = url.toLowerCase();
   return (
+    lower.startsWith("data:image") ||
     lower.includes("example.com") ||
     lower.includes("widget-launcher.imbox.io") ||
     lower.includes("konserthuset.se/globalassets") ||
@@ -230,7 +241,9 @@ async function lookupSourcePageImage(
   ticketUrl: string | null,
   firecrawlKey: string,
 ): Promise<string | null> {
-  const urlsToTry = [sourceUrl, ticketUrl].filter((u): u is string => !!u);
+  const urlsToTry = [ticketUrl, sourceUrl]
+    .filter((u): u is string => !!u)
+    .sort((a, b) => Number(isEventlyUrl(a)) - Number(isEventlyUrl(b)));
 
   for (const url of urlsToTry) {
     const image = await scrapePageForImage(url, firecrawlKey);
@@ -249,8 +262,9 @@ async function lookupSearchImage(
 ): Promise<string | null> {
   const year = new Date(date).getUTCFullYear();
   const queries = [
-    `${artist} ${venue} stockholm event`,
-    `${artist} ${year} stockholm concert`,
+    `${artist} official artist photo`,
+    `${artist} ${year} live press photo`,
+    `${artist} stockholm concert`,
   ];
 
   for (const query of queries) {
@@ -405,7 +419,7 @@ Deno.serve(async (req) => {
       .from("concerts")
       .select("id, artist, venue, date, image_url, source_url, ticket_url")
       .gte("date", new Date().toISOString())
-      .or("image_url.is.null,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%,image_url.ilike.%evently.se/img/%,image_url.ilike.%evently.se/api/file%,image_url.ilike.%i.scdn.co%,image_url.ilike.%placeholder%,image_url.ilike.%blank%")
+      .or("source_url.ilike.%evently.se%,image_url.is.null,image_url.ilike.%data:image%,image_url.ilike.%example.com%,image_url.ilike.%widget-launcher.imbox.io%,image_url.ilike.%konserthuset.se/globalassets%,image_url.ilike.%id-preview--%,image_url.ilike.%lovable.app%,image_url.ilike.%evently.se/img/%,image_url.ilike.%evently.se/api/file%,image_url.ilike.%i.scdn.co%,image_url.ilike.%placeholder%,image_url.ilike.%blank%")
       .order("id", { ascending: true })
       .limit(batchSize);
 
@@ -445,7 +459,8 @@ Deno.serve(async (req) => {
       processed++;
       lastCursorId = concert.id;
 
-      if (!needsImageRefresh(concert.image_url)) {
+      const forceRefresh = isEventlyUrl(concert.source_url);
+      if (!forceRefresh && !needsImageRefresh(concert.image_url)) {
         continue;
       }
 
@@ -490,7 +505,7 @@ Deno.serve(async (req) => {
           updated++;
         }
       } else {
-        if (concert.image_url !== null) {
+        if (concert.image_url !== null && needsImageRefresh(concert.image_url)) {
           const { error: clearError } = await supabase
             .from("concerts")
             .update({ image_url: null })
@@ -513,7 +528,8 @@ Deno.serve(async (req) => {
     const message = `Batch cursor=${cursorId ?? "start"}: processed ${processed}/${concerts.length}, updated ${updated} (source: ${sourceHits}, search: ${searchHits}, spotify: ${spotifyHits}), cleared ${cleared}, unresolved ${unresolved}`;
     console.log(message);
 
-    const shouldChain = chain && !!lastCursorId && processed > 0 && (timedOut || concerts.length === batchSize);
+    const hasMore = !!lastCursorId && processed > 0 && (timedOut || concerts.length === batchSize);
+    const shouldChain = chain && hasMore;
 
     if (shouldChain) {
       const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
@@ -538,7 +554,7 @@ Deno.serve(async (req) => {
         spotifyHits,
         cleared,
         unresolved,
-        nextCursorId: shouldChain ? lastCursorId : null,
+        nextCursorId: hasMore ? lastCursorId : null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
