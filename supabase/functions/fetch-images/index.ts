@@ -243,6 +243,18 @@ async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<
   const lower = url.toLowerCase();
   if (!allowSpotifyHost && lower.includes("i.scdn.co")) return false;
 
+  // evently /api/file/ serves real posters with `content-type: false`. Trust them.
+  if (isEventlyApiFileUrl(url)) {
+    try {
+      const r = await fetchWithTimeout(url, { method: "HEAD" }, 6_000);
+      if (!r.ok) return false;
+      const len = Number(r.headers.get("content-length") || "0");
+      return !(Number.isFinite(len) && len > 0 && len < 4_000);
+    } catch {
+      return false;
+    }
+  }
+
   try {
     let response = await fetchWithTimeout(url, { method: "HEAD" }, 8_000);
     if (!response.ok || response.status === 405) {
