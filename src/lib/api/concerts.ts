@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Concert } from "@/types/concert";
+import { getDirectTicketUrl } from "@/lib/utils/concert-utils";
 
 type MaintenanceResponse = {
   success: boolean;
@@ -137,7 +138,7 @@ export function exportConcertsToCSV(concerts: Concert[]): string {
     c.artist,
     c.venue,
     c.date,
-    c.ticket_url || "",
+    getDirectTicketUrl(c.ticket_url) || "",
     c.tickets_available ? "Yes" : "No",
     c.image_url || "",
     c.source || "",
@@ -155,7 +156,7 @@ export function exportConcertsToJSON(concerts: Concert[]): string {
     artist: c.artist,
     venue: c.venue,
     date: c.date,
-    ticket_url: c.ticket_url,
+    ticket_url: getDirectTicketUrl(c.ticket_url),
     tickets_available: c.tickets_available,
     image_url: c.image_url,
     source: c.source,
