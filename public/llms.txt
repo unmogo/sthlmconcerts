@@ -1,0 +1,8 @@
+# STHLM Concerts
+
+> A curated tracker of every upcoming concert and comedy show in Stockholm, with venues, dates, and direct ticket links.
+
+## Pages
+
+- [Home](/): Browse all upcoming concerts and comedy shows in Stockholm with search, filters, and favourites.
+- [Sign in](/auth): Sign in or create an account to save your favourite shows.
