@@ -86,7 +86,28 @@ const KNOWN_BAD_PATTERNS = [
   "strawberryarena.se/app/themes",
   "aftonstjarnan.se/wp-content/uploads",
   "google_play_badge",
+  // Wrong-source thumbnails commonly returned by web search
+  "i.ytimg.com",
+  "ytimg.com",
+  "i.guim.co.uk",
+  "guim.co.uk",
+  "static01.nyt.com",
+  "media.cnn.com",
+  "nypost.com/wp-content",
+  "thesun.co.uk",
+  "dailymail.co.uk",
+  "bbci.co.uk",
+  "wikipedia.org/wiki",
+  "lookaside.fbsbx.com",
+  "scontent",
+  "cdninstagram",
 ];
+
+/** evently.se serves real images but with bogus content-type. Trust them. */
+function isEventlyApiFileUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.includes("evently.se/api/file/");
+}
 
 function isBlockedImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
