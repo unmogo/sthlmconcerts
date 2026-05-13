@@ -86,7 +86,28 @@ const KNOWN_BAD_PATTERNS = [
   "strawberryarena.se/app/themes",
   "aftonstjarnan.se/wp-content/uploads",
   "google_play_badge",
+  // Wrong-source thumbnails commonly returned by web search
+  "i.ytimg.com",
+  "ytimg.com",
+  "i.guim.co.uk",
+  "guim.co.uk",
+  "static01.nyt.com",
+  "media.cnn.com",
+  "nypost.com/wp-content",
+  "thesun.co.uk",
+  "dailymail.co.uk",
+  "bbci.co.uk",
+  "wikipedia.org/wiki",
+  "lookaside.fbsbx.com",
+  "scontent",
+  "cdninstagram",
 ];
+
+/** evently.se serves real images but with bogus content-type. Trust them. */
+function isEventlyApiFileUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.includes("evently.se/api/file/");
+}
 
 function isBlockedImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
@@ -222,6 +243,18 @@ async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<
   const lower = url.toLowerCase();
   if (!allowSpotifyHost && lower.includes("i.scdn.co")) return false;
 
+  // evently /api/file/ serves real posters with `content-type: false`. Trust them.
+  if (isEventlyApiFileUrl(url)) {
+    try {
+      const r = await fetchWithTimeout(url, { method: "HEAD" }, 6_000);
+      if (!r.ok) return false;
+      const len = Number(r.headers.get("content-length") || "0");
+      return !(Number.isFinite(len) && len > 0 && len < 4_000);
+    } catch {
+      return false;
+    }
+  }
+
   try {
     let response = await fetchWithTimeout(url, { method: "HEAD" }, 8_000);
     if (!response.ok || response.status === 405) {
@@ -239,6 +272,28 @@ async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Fetch a page directly (no Firecrawl) and pull og:image / json-ld image. */
+async function plainFetchPageImage(pageUrl: string): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(pageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; STHLMConcertsBot/1.0)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+    }, 12_000);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const candidates = extractImageCandidatesFromHtml(html, pageUrl);
+    for (const candidate of candidates) {
+      if (await isUsableImageUrl(candidate, false)) return candidate;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -280,17 +335,33 @@ async function lookupSourcePageImage(
   ticketUrl: string | null,
   firecrawlKey: string,
 ): Promise<string | null> {
-  const urlsToTry = [ticketUrl, sourceUrl]
-    .filter((u): u is string => !!u)
-    .sort((a, b) => Number(isEventlyUrl(a)) - Number(isEventlyUrl(b)));
+  // Prefer evently first — they expose proper og:image posters.
+  const all = [sourceUrl, ticketUrl].filter((u): u is string => !!u);
+  const urlsToTry = [
+    ...all.filter(isEventlyUrl),
+    ...all.filter((u) => !isEventlyUrl(u)),
+  ];
+  // Dedupe
+  const seen = new Set<string>();
+  const ordered = urlsToTry.filter((u) => (seen.has(u) ? false : (seen.add(u), true)));
 
-  for (const url of urlsToTry) {
-    const image = await scrapePageForImage(url, firecrawlKey);
+  for (const url of ordered) {
+    // Plain fetch first (cheap + works for evently/most CMS), Firecrawl fallback.
+    let image = await plainFetchPageImage(url);
+    if (!image && firecrawlKey) image = await scrapePageForImage(url, firecrawlKey);
     if (image) return image;
-    await delay(300);
+    await delay(200);
   }
 
   return null;
+}
+
+/** Generic short names ("GRAVE", "FIRE") match anything in web search. Skip them. */
+function isAmbiguousArtistName(artist: string): boolean {
+  const tokens = normalizeText(cleanArtistForLookup(artist)).split(" ").filter(Boolean);
+  if (tokens.length === 0) return true;
+  if (tokens.length === 1 && tokens[0].length <= 6) return true;
+  return false;
 }
 
 async function lookupSearchImage(
@@ -299,11 +370,11 @@ async function lookupSearchImage(
   date: string,
   firecrawlKey: string,
 ): Promise<string | null> {
+  if (isAmbiguousArtistName(artist)) return null;
   const year = new Date(date).getUTCFullYear();
   const queries = [
-    `${artist} official artist photo`,
-    `${artist} ${year} live press photo`,
-    `${artist} stockholm concert`,
+    `"${artist}" band official photo`,
+    `"${artist}" ${year} press photo`,
   ];
 
   for (const query of queries) {
