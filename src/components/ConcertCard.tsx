@@ -62,6 +62,8 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
       {isAdmin && (
         <button
           onClick={() => onToggleSelect(concert.id)}
+          aria-label={selected ? `Deselect ${concert.artist}` : `Select ${concert.artist}`}
+          aria-pressed={selected}
           className={`absolute left-3 top-3 z-20 flex h-6 w-6 items-center justify-center rounded-md border transition-all ${
             selected
               ? "border-primary bg-primary"
@@ -76,6 +78,7 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
       {isAdmin && (
         <button
           onClick={(e) => { e.stopPropagation(); setShowEdit(true); }}
+          aria-label={`Edit ${concert.artist}`}
           className="absolute left-3 top-11 z-20 flex h-6 w-6 items-center justify-center rounded-md border border-muted-foreground/40 bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-background/80"
         >
           <Pencil className="h-3.5 w-3.5 text-foreground" />
@@ -85,6 +88,8 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
       {/* Favourite button — always visible for all users */}
       <button
         onClick={handleFavoriteClick}
+        aria-label={isFavorited ? `Remove ${concert.artist} from favourites` : `Add ${concert.artist} to favourites`}
+        aria-pressed={isFavorited}
         className={`absolute right-3 bottom-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border transition-all ${
           isFavorited
             ? "border-rose-500/60 bg-rose-500/20 text-rose-400"

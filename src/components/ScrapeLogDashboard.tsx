@@ -77,7 +77,7 @@ export function ScrapeLogDashboard({ onClose }: { onClose: () => void }) {
             <Activity className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-bold text-foreground">Scrape Log</h2>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <button onClick={onClose} aria-label="Close scrape log" className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
         </div>
