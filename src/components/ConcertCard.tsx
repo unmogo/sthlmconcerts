@@ -27,7 +27,7 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
 
   const concertDate = parseLocalDate(concert.date);
   const saleDate = concert.ticket_sale_date ? parseLocalDate(concert.ticket_sale_date) : null;
-  const ticketsSelling = concert.tickets_available;
+  const ticketsSelling = concert.tickets_available && !!ticketUrl;
   const saleNotStarted = saleDate && isFuture(saleDate);
   const allDates = [concert, ...extraDates];
   const displayDates = allDates.slice(0, 2);
