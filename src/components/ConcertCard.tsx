@@ -2,7 +2,7 @@ import { format, formatDistanceToNow, isFuture } from "date-fns";
 import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } from "lucide-react";
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
-import { getDirectTicketUrl, parseLocalDate } from "@/lib/utils/concert-utils";
+import { getTicketLink, parseLocalDate } from "@/lib/utils/concert-utils";
 import { EditConcertDialog } from "./EditConcertDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -23,7 +23,7 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   const { user, isAdmin } = useAuth();
   const { favoriteIds, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
-  const ticketUrl = getDirectTicketUrl(concert.ticket_url);
+  const ticketUrl = getTicketLink(concert.ticket_url, concert.source_url);
 
   const concertDate = parseLocalDate(concert.date);
   const saleDate = concert.ticket_sale_date ? parseLocalDate(concert.ticket_sale_date) : null;
