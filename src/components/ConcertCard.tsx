@@ -2,7 +2,7 @@ import { format, formatDistanceToNow, isFuture } from "date-fns";
 import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } from "lucide-react";
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
-import { getTicketLink, parseLocalDate } from "@/lib/utils/concert-utils";
+import { getDisplayImageUrl, getTicketLink, parseLocalDate } from "@/lib/utils/concert-utils";
 import { EditConcertDialog } from "./EditConcertDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -18,8 +18,8 @@ interface ConcertCardProps {
 
 export function ConcertCard({ concert, extraDates = [], index, selected, onToggleSelect }: ConcertCardProps) {
   const [showEdit, setShowEdit] = useState(false);
-  const isBadImage = !concert.image_url || concert.image_url.includes("evently.se/img/");
-  const [imageFailed, setImageFailed] = useState(isBadImage);
+  const displayImageUrl = getDisplayImageUrl(concert.image_url);
+  const [imageFailed, setImageFailed] = useState(!displayImageUrl);
   const { user, isAdmin } = useAuth();
   const { favoriteIds, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
@@ -102,9 +102,9 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
 
       {/* Image */}
       <div className="relative aspect-[4/3] overflow-hidden">
-        {concert.image_url && !imageFailed ? (
+        {displayImageUrl && !imageFailed ? (
           <img
-            src={concert.image_url}
+            src={displayImageUrl}
             alt={concert.artist}
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"

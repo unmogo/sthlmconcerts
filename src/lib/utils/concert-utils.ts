@@ -23,6 +23,26 @@ export function getTicketLink(
   return s || null;
 }
 
+/**
+ * evently.se serves images with CORP: same-origin which prevents browsers
+ * from rendering them on third-party sites. Route them through our edge
+ * proxy so the browser sees a same-origin-friendly response.
+ * The `evently.se/img/event.jpg` placeholder is treated as missing.
+ */
+export function getDisplayImageUrl(rawUrl: string | null | undefined): string | null {
+  const url = rawUrl?.trim();
+  if (!url) return null;
+  const lower = url.toLowerCase();
+  if (lower.includes("evently.se/img/")) return null; // placeholder
+  if (lower.includes("evently.se/")) {
+    const base = import.meta.env.VITE_SUPABASE_URL;
+    if (base) {
+      return `${base}/functions/v1/image-proxy?url=${encodeURIComponent(url)}`;
+    }
+  }
+  return url;
+}
+
 // Venue alias normalization for consistent grouping
 const VENUE_ALIASES: Record<string, string> = {
   "friends arena": "Strawberry Arena",
