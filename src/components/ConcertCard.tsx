@@ -102,9 +102,9 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
 
       {/* Image */}
       <div className="relative aspect-[4/3] overflow-hidden">
-        {concert.image_url && !imageFailed ? (
+        {displayImageUrl && !imageFailed ? (
           <img
-            src={concert.image_url}
+            src={displayImageUrl}
             alt={concert.artist}
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
