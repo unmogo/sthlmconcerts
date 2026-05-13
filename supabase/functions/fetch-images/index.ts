@@ -356,17 +356,25 @@ async function lookupSourcePageImage(
   return null;
 }
 
+/** Generic short names ("GRAVE", "FIRE") match anything in web search. Skip them. */
+function isAmbiguousArtistName(artist: string): boolean {
+  const tokens = normalizeText(cleanArtistForLookup(artist)).split(" ").filter(Boolean);
+  if (tokens.length === 0) return true;
+  if (tokens.length === 1 && tokens[0].length <= 6) return true;
+  return false;
+}
+
 async function lookupSearchImage(
   artist: string,
   venue: string,
   date: string,
   firecrawlKey: string,
 ): Promise<string | null> {
+  if (isAmbiguousArtistName(artist)) return null;
   const year = new Date(date).getUTCFullYear();
   const queries = [
-    `${artist} official artist photo`,
-    `${artist} ${year} live press photo`,
-    `${artist} stockholm concert`,
+    `"${artist}" band official photo`,
+    `"${artist}" ${year} press photo`,
   ];
 
   for (const query of queries) {
