@@ -2,7 +2,7 @@ import { format, formatDistanceToNow, isFuture } from "date-fns";
 import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } from "lucide-react";
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
-import { parseLocalDate } from "@/lib/utils/concert-utils";
+import { getDirectTicketUrl, parseLocalDate } from "@/lib/utils/concert-utils";
 import { EditConcertDialog } from "./EditConcertDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
@@ -23,11 +23,11 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   const { user, isAdmin } = useAuth();
   const { favoriteIds, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
-  const ticketUrl = concert.ticket_url?.trim() || null;
+  const ticketUrl = getDirectTicketUrl(concert.ticket_url);
 
   const concertDate = parseLocalDate(concert.date);
   const saleDate = concert.ticket_sale_date ? parseLocalDate(concert.ticket_sale_date) : null;
-  const ticketsSelling = concert.tickets_available;
+  const ticketsSelling = concert.tickets_available && !!ticketUrl;
   const saleNotStarted = saleDate && isFuture(saleDate);
   const allDates = [concert, ...extraDates];
   const displayDates = allDates.slice(0, 2);
@@ -187,7 +187,7 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
         )}
 
         {/* Action */}
-        {ticketUrl && (
+        {ticketUrl ? (
           <a
             href={ticketUrl}
             target="_blank"
@@ -199,6 +199,15 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
             {ticketsSelling ? "Get Tickets" : "More Info"}
             <ExternalLink className="h-3 w-3" />
           </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm font-bold text-muted-foreground"
+          >
+            <Ticket className="h-4 w-4" />
+            Tickets TBA
+          </button>
         )}
       </div>
 

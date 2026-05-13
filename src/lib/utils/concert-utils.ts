@@ -9,6 +9,23 @@ export function parseLocalDate(dateStr: string): Date {
   return new Date(stripped);
 }
 
+export function isBlockedTicketDestination(url: string | null | undefined): boolean {
+  if (!url) return false;
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    return hostname === "evently.se" || hostname.endsWith(".evently.se");
+  } catch {
+    return url.toLowerCase().includes("evently.se");
+  }
+}
+
+export function getDirectTicketUrl(url: string | null | undefined): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed || isBlockedTicketDestination(trimmed)) return null;
+  return trimmed;
+}
+
 // Venue alias normalization for consistent grouping
 const VENUE_ALIASES: Record<string, string> = {
   "friends arena": "Strawberry Arena",
