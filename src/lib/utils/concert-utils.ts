@@ -9,21 +9,18 @@ export function parseLocalDate(dateStr: string): Date {
   return new Date(stripped);
 }
 
-export function isBlockedTicketDestination(url: string | null | undefined): boolean {
-  if (!url) return false;
-
-  try {
-    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-    return hostname === "evently.se" || hostname.endsWith(".evently.se");
-  } catch {
-    return url.toLowerCase().includes("evently.se");
-  }
-}
-
-export function getDirectTicketUrl(url: string | null | undefined): string | null {
-  const trimmed = url?.trim();
-  if (!trimmed || isBlockedTicketDestination(trimmed)) return null;
-  return trimmed;
+/**
+ * Pick the best external link for a concert: ticket_url first, falling back
+ * to source_url so every event still has an outbound link.
+ */
+export function getTicketLink(
+  ticketUrl: string | null | undefined,
+  sourceUrl?: string | null | undefined
+): string | null {
+  const t = ticketUrl?.trim();
+  if (t) return t;
+  const s = sourceUrl?.trim();
+  return s || null;
 }
 
 // Venue alias normalization for consistent grouping
