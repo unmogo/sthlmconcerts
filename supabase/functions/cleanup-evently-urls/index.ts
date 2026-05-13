@@ -12,22 +12,22 @@ const VENDOR_HOST_RE =
 
 function extractVendorUrl(html: string): string | null {
   // 1. Affiliate wrapper: ticketmaster.evyy.net/...?u=<encoded>
-  const aff = html.match(/https?:\/\/ticketmaster\.evyy\.net\/[^"'s\\]+/gi) ?? [];
+  const aff = html.match(/https?:\/\/ticketmaster\.evyy\.net\/[^"'\s\\<>]+/gi) ?? [];
   for (const raw of aff) {
-    const m = raw.match(/[?&]u=([^&"'s\\]+)/);
+    const cleaned = raw.replace(/&amp;/g, "&");
+    const m = cleaned.match(/[?&]u=([^&"'\s\\<>]+)/);
     if (m) {
       try {
-        const decoded = decodeURIComponent(m[1].replace(/&amp;/g, "&"));
-        if (decoded.startsWith("http")) return decoded.split(/[\"'s]/)[0];
+        const decoded = decodeURIComponent(m[1]).split(/[\\"'\s<>]/)[0];
+        if (decoded.startsWith("http") && VENDOR_HOST_RE.test(decoded)) return decoded;
       } catch { /* ignore */ }
     }
   }
   // 2. Any direct vendor link in the page
-  const all = html.match(/https?:\/\/[^"'s\<>]+/g) ?? [];
+  const all = html.match(/https?:\/\/[^"'\s\\<>]+/g) ?? [];
   for (const url of all) {
-    if (VENDOR_HOST_RE.test(url)) {
-      return url.replace(/&amp;/g, "&");
-    }
+    const cleaned = url.replace(/&amp;/g, "&");
+    if (VENDOR_HOST_RE.test(cleaned)) return cleaned;
   }
   return null;
 }
