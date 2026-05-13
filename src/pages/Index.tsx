@@ -72,9 +72,12 @@ const Index = () => {
           </div>
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <label htmlFor="concert-search" className="sr-only">Search concerts</label>
             <input
+              id="concert-search"
               type="text"
               placeholder="Search artists or venues…"
+              aria-label="Search artists or venues"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
