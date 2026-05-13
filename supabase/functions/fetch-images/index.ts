@@ -275,6 +275,28 @@ async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<
   }
 }
 
+/** Fetch a page directly (no Firecrawl) and pull og:image / json-ld image. */
+async function plainFetchPageImage(pageUrl: string): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(pageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; STHLMConcertsBot/1.0)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+    }, 12_000);
+    if (!res.ok) return null;
+    const html = await res.text();
+    const candidates = extractImageCandidatesFromHtml(html, pageUrl);
+    for (const candidate of candidates) {
+      if (await isUsableImageUrl(candidate, false)) return candidate;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function scrapePageForImage(pageUrl: string, firecrawlKey: string): Promise<string | null> {
   try {
     const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
@@ -313,14 +335,22 @@ async function lookupSourcePageImage(
   ticketUrl: string | null,
   firecrawlKey: string,
 ): Promise<string | null> {
-  const urlsToTry = [ticketUrl, sourceUrl]
-    .filter((u): u is string => !!u)
-    .sort((a, b) => Number(isEventlyUrl(a)) - Number(isEventlyUrl(b)));
+  // Prefer evently first — they expose proper og:image posters.
+  const all = [sourceUrl, ticketUrl].filter((u): u is string => !!u);
+  const urlsToTry = [
+    ...all.filter(isEventlyUrl),
+    ...all.filter((u) => !isEventlyUrl(u)),
+  ];
+  // Dedupe
+  const seen = new Set<string>();
+  const ordered = urlsToTry.filter((u) => (seen.has(u) ? false : (seen.add(u), true)));
 
-  for (const url of urlsToTry) {
-    const image = await scrapePageForImage(url, firecrawlKey);
+  for (const url of ordered) {
+    // Plain fetch first (cheap + works for evently/most CMS), Firecrawl fallback.
+    let image = await plainFetchPageImage(url);
+    if (!image && firecrawlKey) image = await scrapePageForImage(url, firecrawlKey);
     if (image) return image;
-    await delay(300);
+    await delay(200);
   }
 
   return null;
