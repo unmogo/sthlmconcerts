@@ -14,3 +14,10 @@ wall_clock_timeout = 900
 [functions.resolve-tickets]
 verify_jwt = false
 wall_clock_timeout = 900
+
+[functions.image-proxy]
+verify_jwt = false
+
+[functions.cleanup-evently-urls]
+verify_jwt = false
+wall_clock_timeout = 900
