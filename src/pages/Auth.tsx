@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Music, Mail, Lock, Eye, EyeOff } from "lucide-react";
@@ -54,8 +55,28 @@ export default function Auth() {
     }
   };
 
+  const pageTitle =
+    mode === "login"
+      ? "Sign In | STHLM Concerts"
+      : mode === "signup"
+      ? "Create Account | STHLM Concerts"
+      : "Reset Password | STHLM Concerts";
+  const pageDescription =
+    mode === "login"
+      ? "Sign in to STHLM Concerts to save your favourite shows and track upcoming concerts in Stockholm."
+      : mode === "signup"
+      ? "Join STHLM Concerts to save favourites and follow upcoming concerts and comedy shows in Stockholm."
+      : "Reset your STHLM Concerts password and get back to tracking shows in Stockholm.";
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <Helmet>
+        <title>{pageTitle}</title>
+        <meta name="description" content={pageDescription} />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
+        <link rel="canonical" href="https://sthlmconcerts.lovable.app/auth" />
+      </Helmet>
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -63,7 +84,12 @@ export default function Auth() {
             <Music className="h-7 w-7 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">
-            STHLM <span className="text-gradient">CONCERTS</span>
+            {mode === "login"
+              ? "Sign In"
+              : mode === "signup"
+              ? "Create Account"
+              : "Reset Password"}
+            <span className="sr-only"> — STHLM Concerts</span>
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Every upcoming show in Stockholm</p>
         </div>
@@ -83,10 +109,11 @@ export default function Auth() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Email</label>
+              <label htmlFor="auth-email" className="text-sm font-medium text-foreground mb-1.5 block">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
+                  id="auth-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -99,10 +126,11 @@ export default function Auth() {
 
             {mode !== "forgot" && (
               <div>
-                <label className="text-sm font-medium text-foreground mb-1.5 block">Password</label>
+                <label htmlFor="auth-password" className="text-sm font-medium text-foreground mb-1.5 block">Password</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
+                    id="auth-password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -113,6 +141,8 @@ export default function Auth() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

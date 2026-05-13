@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Music, Lock } from "lucide-react";
@@ -43,13 +44,22 @@ export default function ResetPassword() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <Helmet>
+        <title>Reset Your Password | STHLM Concerts</title>
+        <meta name="description" content="Choose a new password for your STHLM Concerts account and get back to tracking concerts in Stockholm." />
+        <meta property="og:title" content="Reset Your Password | STHLM Concerts" />
+        <meta property="og:description" content="Choose a new password for your STHLM Concerts account." />
+        <link rel="canonical" href="https://sthlmconcerts.lovable.app/reset-password" />
+        <meta name="robots" content="noindex" />
+      </Helmet>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-neon mb-4">
             <Music className="h-7 w-7 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">
-            STHLM <span className="text-gradient">CONCERTS</span>
+            Reset Your Password
+            <span className="sr-only"> — STHLM Concerts</span>
           </h1>
         </div>
         <div className="rounded-xl border border-border bg-card p-6 card-shadow">
@@ -57,10 +67,11 @@ export default function ResetPassword() {
           <p className="text-sm text-muted-foreground mb-6">Choose a strong password for your account.</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">New Password</label>
+              <label htmlFor="new-password" className="text-sm font-medium text-foreground mb-1.5 block">New Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
+                  id="new-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
