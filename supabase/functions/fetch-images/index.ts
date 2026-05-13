@@ -69,7 +69,6 @@ const KNOWN_BAD_PATTERNS = [
   "example.com",
   "widget-launcher.imbox.io",
   "konserthuset.se/globalassets",
-  "evently.se/api/file",
   "evently.se/img/",
   "localhost",
   "lovable.app",
