@@ -53,7 +53,6 @@ function needsImageRefresh(url: string | null | undefined): boolean {
     lower.includes("example.com") ||
     lower.includes("widget-launcher.imbox.io") ||
     lower.includes("konserthuset.se/globalassets") ||
-    lower.includes("evently.se/api/file") ||
     lower.includes("evently.se/img/") ||
     lower.includes("i.scdn.co") ||
     lower.includes("localhost") ||
