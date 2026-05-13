@@ -2,7 +2,7 @@ import { format, formatDistanceToNow, isFuture } from "date-fns";
 import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } from "lucide-react";
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
-import { getTicketLink, parseLocalDate } from "@/lib/utils/concert-utils";
+import { getDisplayImageUrl, getTicketLink, parseLocalDate } from "@/lib/utils/concert-utils";
 import { EditConcertDialog } from "./EditConcertDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
