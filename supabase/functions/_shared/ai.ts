@@ -36,20 +36,37 @@ export class AiClient {
       tool_choice: { type: "function", function: { name: opts.name ?? "extract" } },
     };
 
-    const res = await fetch(GATEWAY, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    let lastErr = "";
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const res = await fetch(GATEWAY, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
 
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(`AI ${res.status}: ${t.slice(0, 200)}`);
+      if (res.status === 429 || res.status === 503) {
+        const wait = 1500 * Math.pow(2, attempt) + Math.random() * 1000;
+        await new Promise((r) => setTimeout(r, wait));
+        lastErr = `${res.status}`;
+        continue;
+      }
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`AI ${res.status}: ${t.slice(0, 200)}`);
+      }
+      const data = await res.json();
+      const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+      if (!args) throw new Error("AI: no tool call returned");
+      try {
+        return JSON.parse(args) as T;
+      } catch {
+        throw new Error("AI: bad JSON");
+      }
     }
-    const data = await res.json();
+    throw new Error(`AI rate-limited after retries (${lastErr})`);
     const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     if (!args) throw new Error("AI: no tool call returned");
     try {
