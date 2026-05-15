@@ -3,6 +3,7 @@
 // 4) Wikipedia  5) og:image of source_url. Skips ambiguous artists.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
+import { extractEventImageUrl, goodImageUrl, isBadImageUrl } from "../_shared/event-extract.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -34,16 +35,21 @@ async function authedAdminUserId(req: Request): Promise<string | null> {
   return ok ? uid : null;
 }
 
-const BAD_HOST = /(ytimg\.com|guim\.co\.uk|twimg\.com|fbcdn\.net|wikimedia\.org\/wikipedia\/commons\/thumb\/.*\/15px|x-default|placeholder)/i;
-const BAD_PATH = /evently\.se\/img\//i;
-
-async function head(url: string, timeoutMs = 6000): Promise<boolean> {
+async function imageReachable(url: string, timeoutMs = 6000): Promise<boolean> {
   try {
+    if (/evently\.se\/api\/file\//i.test(url)) return true;
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), timeoutMs);
     const r = await fetch(url, { method: "HEAD", signal: ctl.signal });
     clearTimeout(t);
-    return r.ok;
+    if (r.ok) return true;
+  } catch { /* try GET fallback */ }
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    const r = await fetch(url, { method: "GET", signal: ctl.signal, headers: { Range: "bytes=0-64" } });
+    clearTimeout(t);
+    return r.ok && (r.headers.get("content-type") ?? "").toLowerCase().startsWith("image/");
   } catch { return false; }
 }
 
@@ -82,16 +88,27 @@ async function spotifyToken(): Promise<string | null> {
 async function spotifyImage(artist: string): Promise<string | null> {
   const tok = await spotifyToken();
   if (!tok) return null;
+  const normalized = normalizeArtistForLookup(artist);
   const r = await fetch(
-    `https://api.spotify.com/v1/search?type=artist&limit=1&q=${encodeURIComponent(artist)}`,
+    `https://api.spotify.com/v1/search?type=artist&limit=3&q=${encodeURIComponent(normalized)}`,
     { headers: { Authorization: `Bearer ${tok}` } },
   );
   if (!r.ok) return null;
   const d = await r.json();
-  const a = d?.artists?.items?.[0];
-  if (!a || a.name.toLowerCase() !== artist.toLowerCase()) return null;
+  const items = (d?.artists?.items ?? []) as Array<{ name: string; images?: Array<{ width: number; url: string }> }>;
+  const a = items.find((x) => normalizeArtistForLookup(x.name) === normalized);
+  if (!a) return null;
   const img = a.images?.find((x: { width: number; url: string }) => x.width >= 480) ?? a.images?.[0];
-  return img?.url ?? null;
+  return goodImageUrl(img?.url) ?? null;
+}
+
+function normalizeArtistForLookup(name: string): string {
+  return name
+    .replace(/\s*(\+|,| feat\.? | ft\.? | support:| w\/ ).*$/i, "")
+    .replace(/\s*[-–—:|].*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 // --- MusicBrainz + Wikipedia ---
@@ -114,14 +131,7 @@ async function wikipediaImage(artist: string): Promise<string | null> {
   if (!r.ok) return null;
   const d = await r.json();
   const url = d?.originalimage?.source ?? d?.thumbnail?.source;
-  return url ?? null;
-}
-
-// --- og:image fallback ---
-function extractOg(html: string): string | null {
-  const m = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
-        ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-  return m?.[1] ?? null;
+  return goodImageUrl(url);
 }
 
 // --- Disambiguation ---
@@ -158,8 +168,8 @@ async function findImage(
   if (source_url) {
     const html = await getText(source_url);
     if (html) {
-      const og = extractOg(html);
-      if (og && !BAD_HOST.test(og) && !BAD_PATH.test(og) && (await head(og))) return og;
+      const og = extractEventImageUrl(html, source_url);
+      if (og && (await imageReachable(og))) return og;
     }
   }
   // 2. Disambiguate before web/db lookup
@@ -175,7 +185,7 @@ async function findImage(
   const mbid = await musicbrainzMbid(name);
   if (mbid) {
     const wp = await wikipediaImage(name);
-    if (wp && !BAD_HOST.test(wp)) return wp;
+    if (wp) return wp;
   }
   return null;
 }
@@ -189,23 +199,26 @@ async function runJob(jobId: string) {
   const ai = new AiClient();
   const { data: rows } = await sb
     .from("concerts")
-    .select("id, artist, source_url")
-    .is("image_url", null)
+    .select("id, artist, source_url, image_url")
     .gte("date", new Date().toISOString())
     .order("date", { ascending: true })
-    .limit(500);
+    .limit(1000);
 
-  const total = rows?.length ?? 0;
+  const targets = (rows ?? []).filter((r) => !r.image_url || isBadImageUrl(r.image_url));
+
+  const total = targets.length;
   await patchJob(jobId, { status: "running", total, current_step: "fetching" });
 
   let updated = 0;
-  for (let i = 0; i < (rows?.length ?? 0); i++) {
-    const c = rows![i];
+  for (let i = 0; i < targets.length; i++) {
+    const c = targets[i];
     try {
       const url = await findImage(ai, c.artist, c.source_url);
       if (url) {
         await sb.from("concerts").update({ image_url: url }).eq("id", c.id);
         updated++;
+      } else if (c.image_url && isBadImageUrl(c.image_url)) {
+        await sb.from("concerts").update({ image_url: null }).eq("id", c.id);
       }
     } catch (_e) { /* continue */ }
     if (i % 5 === 0) {
