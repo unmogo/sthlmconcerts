@@ -84,9 +84,9 @@ async function runJob(jobId: string) {
         if (isNaN(date.getTime())) continue;
         if (date.getTime() < Date.now() - 24 * 3600_000) continue;
 
-        // Resolve venue
+        // Resolve venue (cheap path only — AI fallback reserved for very ambiguous cases)
         let venue = quickResolveVenue(d.venue_raw, d.address_raw);
-        if (!venue) {
+        if (!venue && (d.venue_raw || d.address_raw)) {
           venue = await aiResolveVenue(ai, d.venue_raw, d.address_raw);
         }
         if (!isValidVenue(venue)) continue;
