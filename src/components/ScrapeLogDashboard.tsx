@@ -83,10 +83,16 @@ function groupByRun(logs: ScrapeLog[]): { runDate: string; logs: ScrapeLog[]; to
 }
 
 export function ScrapeLogDashboard({ onClose }: { onClose: () => void }) {
+  const { data: jobs } = useQuery({
+    queryKey: ["scrape-jobs"],
+    queryFn: fetchActiveJobs,
+    refetchInterval: 2000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
   const { data: logs, isLoading } = useQuery({
     queryKey: ["scrape-logs"],
     queryFn: fetchScrapeLogs,
-    // Keep the modal “live” so admins can see batches 1–10 progressing.
     refetchInterval: 4000,
     refetchOnWindowFocus: true,
     staleTime: 0,
