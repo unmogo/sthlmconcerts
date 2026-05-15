@@ -67,13 +67,6 @@ export class AiClient {
       }
     }
     throw new Error(`AI rate-limited after retries (${lastErr})`);
-    const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!args) throw new Error("AI: no tool call returned");
-    try {
-      return JSON.parse(args) as T;
-    } catch {
-      throw new Error("AI: bad JSON");
-    }
   }
 }
 
