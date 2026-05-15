@@ -2,56 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Concert } from "@/types/concert";
 import { getTicketLink } from "@/lib/utils/concert-utils";
 
-type MaintenanceResponse = {
-  success: boolean;
-  message: string;
-  nextCursorId?: string | null;
-  processed?: number;
-  updated?: number;
-  unresolved?: number;
-};
-
-async function runMaintenanceJob(
-  functionName: "fetch-images" | "resolve-tickets",
-  batchSize: number,
-): Promise<{ success: boolean; message: string }> {
-  let cursorId: string | null = null;
-  let processed = 0;
-  let updated = 0;
-  let unresolved = 0;
-  const maxIterations = functionName === "fetch-images" ? 500 : 250;
-
-  for (let iteration = 0; iteration < maxIterations; iteration++) {
-    const { data, error } = await supabase.functions.invoke(functionName, {
-      body: { chain: false, batchSize, cursorId },
-    });
-
-    if (error) throw error;
-
-    const result = (data || {}) as MaintenanceResponse;
-    processed += Number(result.processed || 0);
-    updated += Number(result.updated || 0);
-    unresolved += Number(result.unresolved || 0);
-
-    const nextCursorId = typeof result.nextCursorId === "string" && result.nextCursorId.length > 0
-      ? result.nextCursorId
-      : null;
-
-    if (!nextCursorId) {
-      return {
-        success: result.success !== false,
-        message: `Done: processed ${processed}, updated ${updated}, unresolved ${unresolved}`,
-      };
-    }
-
-    cursorId = nextCursorId;
-  }
-
-  throw new Error(`${functionName} exceeded safe iteration limit (${maxIterations} batches)`);
-}
-
 export async function fetchConcerts(): Promise<Concert[]> {
-  // PostgREST defaults to 1000 rows; paginate so late-year concerts don’t “disappear” in the UI.
   const pageSize = 1000;
   const all: Concert[] = [];
   const fromDate = new Date().toISOString();
@@ -65,30 +16,54 @@ export async function fetchConcerts(): Promise<Concert[]> {
       .range(offset, offset + pageSize - 1);
 
     if (error) throw error;
-
     const chunk = (data as Concert[]) || [];
     all.push(...chunk);
-
     if (chunk.length < pageSize) break;
   }
 
   return all;
 }
 
-export async function triggerScrape(): Promise<{ success: boolean; message: string }> {
-  const { data, error } = await supabase.functions.invoke("scrape-concerts", {
-    body: { batch: 1, chain: true },
-  });
+type JobStartResponse = { jobId: string; status: string };
+
+async function startBackgroundJob(fn: "scrape-concerts" | "fetch-images"): Promise<{ success: boolean; message: string }> {
+  const { data, error } = await supabase.functions.invoke<JobStartResponse>(fn, { body: {} });
   if (error) throw error;
-  return data;
+  if (!data?.jobId) throw new Error("No jobId returned");
+  return {
+    success: true,
+    message: `Job started in background. Open Logs to follow progress.`,
+  };
 }
 
-export async function triggerFetchImages(): Promise<{ success: boolean; message: string }> {
-  return runMaintenanceJob("fetch-images", 3);
+export async function triggerScrape() {
+  return startBackgroundJob("scrape-concerts");
+}
+
+export async function triggerFetchImages() {
+  return startBackgroundJob("fetch-images");
 }
 
 export async function triggerResolveTickets(): Promise<{ success: boolean; message: string }> {
-  return runMaintenanceJob("resolve-tickets", 40);
+  // Keeps the existing cursor pattern — fast and reliable.
+  let cursorId: string | null = null;
+  let processed = 0, updated = 0, unresolved = 0;
+  for (let i = 0; i < 250; i++) {
+    const { data, error } = await supabase.functions.invoke("resolve-tickets", {
+      body: { chain: false, batchSize: 40, cursorId },
+    });
+    if (error) throw error;
+    const r = (data || {}) as { processed?: number; updated?: number; unresolved?: number; nextCursorId?: string | null };
+    processed += r.processed ?? 0;
+    updated += r.updated ?? 0;
+    unresolved += r.unresolved ?? 0;
+    const next = typeof r.nextCursorId === "string" && r.nextCursorId ? r.nextCursorId : null;
+    if (!next) {
+      return { success: true, message: `Done: processed ${processed}, updated ${updated}, unresolved ${unresolved}` };
+    }
+    cursorId = next;
+  }
+  throw new Error("resolve-tickets exceeded iteration limit");
 }
 
 export async function deleteConcerts(ids: string[]): Promise<void> {
