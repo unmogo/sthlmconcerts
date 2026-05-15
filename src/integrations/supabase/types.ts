@@ -118,6 +118,60 @@ export type Database = {
           },
         ]
       }
+      scrape_jobs: {
+        Row: {
+          ai_calls: number
+          created_at: string
+          current_step: string | null
+          details: Json
+          error: string | null
+          events_found: number
+          events_upserted: number
+          finished_at: string | null
+          id: string
+          kind: string
+          progress: number
+          started_at: string
+          status: string
+          total: number
+          triggered_by: string | null
+        }
+        Insert: {
+          ai_calls?: number
+          created_at?: string
+          current_step?: string | null
+          details?: Json
+          error?: string | null
+          events_found?: number
+          events_upserted?: number
+          finished_at?: string | null
+          id?: string
+          kind: string
+          progress?: number
+          started_at?: string
+          status?: string
+          total?: number
+          triggered_by?: string | null
+        }
+        Update: {
+          ai_calls?: number
+          created_at?: string
+          current_step?: string | null
+          details?: Json
+          error?: string | null
+          events_found?: number
+          events_upserted?: number
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          progress?: number
+          started_at?: string
+          status?: string
+          total?: number
+          triggered_by?: string | null
+        }
+        Relationships: []
+      }
       scrape_log: {
         Row: {
           batch: number | null

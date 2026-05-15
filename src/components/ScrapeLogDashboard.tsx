@@ -1,7 +1,32 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import { Activity, Clock, AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { Activity, Clock, AlertTriangle, CheckCircle2, X, Loader2 } from "lucide-react";
+
+interface ScrapeJob {
+  id: string;
+  kind: string;
+  status: string;
+  current_step: string | null;
+  progress: number;
+  total: number;
+  events_found: number;
+  events_upserted: number;
+  ai_calls: number;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+async function fetchActiveJobs(): Promise<ScrapeJob[]> {
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .select("*")
+    .order("started_at", { ascending: false })
+    .limit(5);
+  if (error) throw error;
+  return (data as ScrapeJob[]) || [];
+}
 
 interface ScrapeLog {
   id: string;
@@ -58,10 +83,16 @@ function groupByRun(logs: ScrapeLog[]): { runDate: string; logs: ScrapeLog[]; to
 }
 
 export function ScrapeLogDashboard({ onClose }: { onClose: () => void }) {
+  const { data: jobs } = useQuery({
+    queryKey: ["scrape-jobs"],
+    queryFn: fetchActiveJobs,
+    refetchInterval: 2000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
   const { data: logs, isLoading } = useQuery({
     queryKey: ["scrape-logs"],
     queryFn: fetchScrapeLogs,
-    // Keep the modal “live” so admins can see batches 1–10 progressing.
     refetchInterval: 4000,
     refetchOnWindowFocus: true,
     staleTime: 0,
@@ -82,7 +113,44 @@ export function ScrapeLogDashboard({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="max-h-[65vh] overflow-y-auto p-6">
+        <div className="max-h-[65vh] overflow-y-auto p-6 space-y-4">
+          {jobs && jobs.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Background jobs</h3>
+              {jobs.map((j) => {
+                const pct = j.total > 0 ? Math.round((j.progress / j.total) * 100) : 0;
+                const running = j.status === "running" || j.status === "queued";
+                return (
+                  <div key={j.id} className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {running ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        ) : j.status === "failed" ? (
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        )}
+                        <span className="text-sm font-semibold capitalize">{j.kind}</span>
+                        <span className="text-xs text-muted-foreground">· {j.status}{j.current_step ? ` · ${j.current_step}` : ""}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{format(new Date(j.started_at), "HH:mm:ss")}</span>
+                    </div>
+                    {j.total > 0 && (
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-muted">
+                        <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    )}
+                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{j.progress}/{j.total} · found {j.events_found} · saved {j.events_upserted}</span>
+                      <span>AI calls: {j.ai_calls}</span>
+                    </div>
+                    {j.error && <p className="mt-1 text-xs text-destructive">{j.error}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {isLoading ? (
             <p className="text-center text-muted-foreground">Loading logs…</p>
           ) : runs.length === 0 ? (
