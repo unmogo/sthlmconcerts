@@ -161,6 +161,8 @@ async function runJob(jobId: string) {
       ai_calls: ai.usage.calls,
       details: totals.perSource,
     });
+    // Pause between sources to avoid AI rate limits
+    if (i < SOURCES.length - 1) await new Promise((r) => setTimeout(r, 4000));
   }
 
   await patchJob(jobId, {
