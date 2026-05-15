@@ -1,6 +1,7 @@
 // Edge function: scrape evently.se event pages and replace ticket_url with
 // the real vendor URL (Ticketmaster, Tickster, Nortic, Billetto, Dice, etc.).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { extractTicketUrlFromHtml } from "../_shared/event-extract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -72,7 +73,7 @@ Deno.serve(async (req) => {
           return;
         }
         const html = await res.text();
-        const vendor = extractVendorUrl(html);
+        const vendor = extractTicketUrlFromHtml(html) ?? extractVendorUrl(html);
         if (vendor) {
           await supabase.from("concerts").update({ ticket_url: vendor, tickets_available: true }).eq("id", r.id);
           updated++;
