@@ -1,665 +1,260 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// fetch-images: admin-triggered background job. Pipeline:
+// 1) Trust evently /api/file/ posters  2) Spotify  3) MusicBrainz
+// 4) Wikipedia  5) og:image of source_url. Skips ambiguous artists.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { AiClient } from "../_shared/ai.ts";
 
-const corsHeaders = {
+const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_BATCH_SIZE = 30;
-const TIME_BUDGET_MS = 840_000;
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void };
 
-function isEventlyUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  try {
-    return new URL(url).hostname.toLowerCase().includes("evently.se");
-  } catch {
-    return url.toLowerCase().includes("evently.se");
-  }
-}
-
-let spotifyToken: string | null = null;
-let spotifyTokenExpiry = 0;
-
-function normalizeText(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\b(feat|featuring|ft)\b.*$/i, "")
-    .replace(/[()[\]{}]/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 15_000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function needsImageRefresh(url: string | null | undefined): boolean {
-  if (!url) return true;
-  const lower = url.toLowerCase();
-  return (
-    lower.startsWith("data:image") ||
-    lower.includes("example.com") ||
-    lower.includes("widget-launcher.imbox.io") ||
-    lower.includes("konserthuset.se/globalassets") ||
-    lower.includes("evently.se/img/") ||
-    lower.includes("i.scdn.co") ||
-    lower.includes("localhost") ||
-    lower.includes("lovable.app") ||
-    lower.includes("id-preview--") ||
-    lower.includes("placeholder") ||
-    lower.includes("blank")
+function db() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 }
 
-// Known venue/promoter images that get reused across many artists
-const KNOWN_BAD_PATTERNS = [
-  "data:image",
-  "example.com",
-  "widget-launcher.imbox.io",
-  "konserthuset.se/globalassets",
-  "evently.se/img/",
-  "localhost",
-  "lovable.app",
-  "id-preview--",
-  // Tickster venue logos
-  "static.tickster.com/cdn-cgi/image",
-  // Ticketmaster default event images
-  "ticketm.net/dam/",
-  "tmconst.com/ccp-salesforce",
-  // LiveNation shared promo
-  "dynamicmedia.livenationinternational.com",
-  // Feverup tiny thumbnails
-  "feverup.com/image/upload",
-  // Venue-specific logos
-  "strawberryarena.se/app/themes",
-  "aftonstjarnan.se/wp-content/uploads",
-  "google_play_badge",
-  // Wrong-source thumbnails commonly returned by web search
-  "i.ytimg.com",
-  "ytimg.com",
-  "i.guim.co.uk",
-  "guim.co.uk",
-  "static01.nyt.com",
-  "media.cnn.com",
-  "nypost.com/wp-content",
-  "thesun.co.uk",
-  "dailymail.co.uk",
-  "bbci.co.uk",
-  "wikipedia.org/wiki",
-  "lookaside.fbsbx.com",
-  "scontent",
-  "cdninstagram",
-];
-
-/** evently.se serves real images but with bogus content-type. Trust them. */
-function isEventlyApiFileUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.includes("evently.se/api/file/");
-}
-
-function isBlockedImageUrl(url: string | null | undefined): boolean {
-  if (!url) return true;
-  const lower = url.toLowerCase();
-  return KNOWN_BAD_PATTERNS.some((pattern) => lower.includes(pattern));
-}
-
-function isLikelyLogoOrPlaceholder(url: string): boolean {
-  const lower = url.toLowerCase();
-  return (
-    lower.includes("logo") ||
-    lower.includes("icon") ||
-    lower.includes("avatar") ||
-    lower.includes("sprite") ||
-    lower.includes("placeholder") ||
-    lower.includes("blank") ||
-    lower.includes("badge") ||
-    lower.includes("logga") ||
-    lower.includes("default-image") ||
-    lower.endsWith(".svg")
+async function authedAdminUserId(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  const c = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: auth } } },
   );
+  const { data } = await c.auth.getClaims(auth.replace("Bearer ", ""));
+  const uid = data?.claims?.sub as string | undefined;
+  if (!uid) return null;
+  const sb = db();
+  const { data: ok } = await sb.rpc("has_role", { _user_id: uid, _role: "admin" });
+  return ok ? uid : null;
 }
 
-function normalizeCandidateImageUrl(raw: string, baseUrl: string): string | null {
-  if (!raw) return null;
-  const cleaned = raw.trim().replace(/&amp;/g, "&");
+const BAD_HOST = /(ytimg\.com|guim\.co\.uk|twimg\.com|fbcdn\.net|wikimedia\.org\/wikipedia\/commons\/thumb\/.*\/15px|x-default|placeholder)/i;
+const BAD_PATH = /evently\.se\/img\//i;
 
+async function head(url: string, timeoutMs = 6000): Promise<boolean> {
   try {
-    return new URL(cleaned, baseUrl).toString();
-  } catch {
-    return null;
-  }
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    const r = await fetch(url, { method: "HEAD", signal: ctl.signal });
+    clearTimeout(t);
+    return r.ok;
+  } catch { return false; }
 }
 
-function extractMetaContent(html: string, key: string): string[] {
-  const matches: string[] = [];
-  const patterns = [
-    new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*content=["']([^"']+)["'][^>]*>`, "gi"),
-    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${key}["'][^>]*>`, "gi"),
-  ];
-
-  for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
-      if (match[1]) matches.push(match[1]);
-    }
-  }
-
-  return matches;
-}
-
-function collectJsonLdImages(input: unknown, out: string[]) {
-  if (!input) return;
-  if (typeof input === "string") {
-    if (input.startsWith("http")) out.push(input);
-    return;
-  }
-
-  if (Array.isArray(input)) {
-    for (const item of input) collectJsonLdImages(item, out);
-    return;
-  }
-
-  if (typeof input === "object") {
-    const obj = input as Record<string, unknown>;
-    if (obj.image) collectJsonLdImages(obj.image, out);
-    if (typeof obj.url === "string" && obj.url.startsWith("http") && String(obj["@type"] || "").toLowerCase().includes("image")) {
-      out.push(obj.url);
-    }
-    for (const value of Object.values(obj)) {
-      collectJsonLdImages(value, out);
-    }
-  }
-}
-
-function extractImageCandidatesFromHtml(html: string, pageUrl: string): string[] {
-  const values = [
-    ...extractMetaContent(html, "og:image"),
-    ...extractMetaContent(html, "og:image:secure_url"),
-    ...extractMetaContent(html, "twitter:image"),
-    ...extractMetaContent(html, "twitter:image:src"),
-    ...extractMetaContent(html, "image"),
-  ];
-
-  const jsonLdMatches = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
-  for (const match of jsonLdMatches) {
-    try {
-      const parsed = JSON.parse(match[1]);
-      collectJsonLdImages(parsed, values);
-    } catch {
-      // ignore bad JSON-LD blocks
-    }
-  }
-
-  const imgTagMatches = Array.from(html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)).slice(0, 8);
-  for (const match of imgTagMatches) {
-    values.push(match[1]);
-  }
-
-  const normalized = values
-    .map((candidate) => normalizeCandidateImageUrl(candidate, pageUrl))
-    .filter((u): u is string => !!u);
-
-  return [...new Set(normalized)];
-}
-
-// Check if a candidate image is already used by 2+ different artists (venue logo)
-async function isSharedVenueImage(
-  supabase: ReturnType<typeof createClient>,
-  imageUrl: string,
-  currentArtist: string,
-): Promise<boolean> {
+async function getText(url: string, timeoutMs = 8000): Promise<string | null> {
   try {
-    const { data } = await supabase
-      .from("concerts")
-      .select("artist")
-      .eq("image_url", imageUrl)
-      .limit(5);
-    if (!data || data.length === 0) return false;
-    const otherArtists = new Set(
-      data.map((r: { artist: string }) => r.artist.toLowerCase()).filter((a: string) => a !== currentArtist.toLowerCase()),
-    );
-    return otherArtists.size >= 2;
-  } catch {
-    return false;
-  }
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    const r = await fetch(url, { signal: ctl.signal, headers: { "User-Agent": "STHLMConcertsBot/2" } });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    return await r.text();
+  } catch { return null; }
 }
 
-async function isUsableImageUrl(url: string, allowSpotifyHost = false): Promise<boolean> {
-  if (!url) return false;
-  if (isBlockedImageUrl(url)) return false;
-  if (isLikelyLogoOrPlaceholder(url)) return false;
+// --- Spotify ---
+let SPOTIFY_TOKEN: { value: string; exp: number } | null = null;
+async function spotifyToken(): Promise<string | null> {
+  const id = Deno.env.get("SPOTIFY_CLIENT_ID");
+  const secret = Deno.env.get("SPOTIFY_CLIENT_SECRET");
+  if (!id || !secret) return null;
+  if (SPOTIFY_TOKEN && SPOTIFY_TOKEN.exp > Date.now()) return SPOTIFY_TOKEN.value;
+  const r = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${id}:${secret}`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  SPOTIFY_TOKEN = { value: d.access_token, exp: Date.now() + 3500_000 };
+  return d.access_token;
+}
 
-  const lower = url.toLowerCase();
-  if (!allowSpotifyHost && lower.includes("i.scdn.co")) return false;
+async function spotifyImage(artist: string): Promise<string | null> {
+  const tok = await spotifyToken();
+  if (!tok) return null;
+  const r = await fetch(
+    `https://api.spotify.com/v1/search?type=artist&limit=1&q=${encodeURIComponent(artist)}`,
+    { headers: { Authorization: `Bearer ${tok}` } },
+  );
+  if (!r.ok) return null;
+  const d = await r.json();
+  const a = d?.artists?.items?.[0];
+  if (!a || a.name.toLowerCase() !== artist.toLowerCase()) return null;
+  const img = a.images?.find((x: { width: number; url: string }) => x.width >= 480) ?? a.images?.[0];
+  return img?.url ?? null;
+}
 
-  // evently /api/file/ serves real posters with `content-type: false`. Trust them.
-  if (isEventlyApiFileUrl(url)) {
-    try {
-      const r = await fetchWithTimeout(url, { method: "HEAD" }, 6_000);
-      if (!r.ok) return false;
-      const len = Number(r.headers.get("content-length") || "0");
-      return !(Number.isFinite(len) && len > 0 && len < 4_000);
-    } catch {
-      return false;
-    }
-  }
+// --- MusicBrainz + Wikipedia ---
+async function musicbrainzMbid(artist: string): Promise<string | null> {
+  const r = await fetch(
+    `https://musicbrainz.org/ws/2/artist/?fmt=json&limit=1&query=${encodeURIComponent(artist)}`,
+    { headers: { "User-Agent": "STHLMConcerts/1.0 (contact: admin@sthlmconcerts.lovable.app)" } },
+  );
+  if (!r.ok) return null;
+  const d = await r.json();
+  const top = d?.artists?.[0];
+  if (!top || (top.score ?? 0) < 90) return null;
+  return top.id ?? null;
+}
 
+async function wikipediaImage(artist: string): Promise<string | null> {
+  const r = await fetch(
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(artist)}`,
+  );
+  if (!r.ok) return null;
+  const d = await r.json();
+  const url = d?.originalimage?.source ?? d?.thumbnail?.source;
+  return url ?? null;
+}
+
+// --- og:image fallback ---
+function extractOg(html: string): string | null {
+  const m = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+        ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+  return m?.[1] ?? null;
+}
+
+// --- Disambiguation ---
+async function disambiguate(ai: AiClient, artist: string): Promise<{ ok: boolean; canonical?: string }> {
+  if (artist.length >= 6 && /\s/.test(artist)) return { ok: true, canonical: artist };
   try {
-    let response = await fetchWithTimeout(url, { method: "HEAD" }, 8_000);
-    if (!response.ok || response.status === 405) {
-      response = await fetchWithTimeout(url, { method: "GET", headers: { Range: "bytes=0-1024" } }, 8_000);
-    }
-
-    if (!response.ok) return false;
-
-    const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    if (!contentType.includes("image/")) return false;
-
-    const contentLength = Number(response.headers.get("content-length") || "0");
-    if (Number.isFinite(contentLength) && contentLength > 0 && contentLength < 4_000) return false;
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Fetch a page directly (no Firecrawl) and pull og:image / json-ld image. */
-async function plainFetchPageImage(pageUrl: string): Promise<string | null> {
-  try {
-    const res = await fetchWithTimeout(pageUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; STHLMConcertsBot/1.0)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-      redirect: "follow",
-    }, 12_000);
-    if (!res.ok) return null;
-    const html = await res.text();
-    const candidates = extractImageCandidatesFromHtml(html, pageUrl);
-    for (const candidate of candidates) {
-      if (await isUsableImageUrl(candidate, false)) return candidate;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function scrapePageForImage(pageUrl: string, firecrawlKey: string): Promise<string | null> {
-  try {
-    const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${firecrawlKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: pageUrl,
-        formats: ["html"],
-        onlyMainContent: false,
-      }),
-    }, 18_000);
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const html: string = data?.data?.html || data?.html || "";
-    const candidates = extractImageCandidatesFromHtml(html, pageUrl);
-
-    for (const candidate of candidates) {
-      if (await isUsableImageUrl(candidate, false)) {
-        return candidate;
-      }
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function lookupSourcePageImage(
-  sourceUrl: string | null,
-  ticketUrl: string | null,
-  firecrawlKey: string,
-): Promise<string | null> {
-  // Prefer evently first — they expose proper og:image posters.
-  const all = [sourceUrl, ticketUrl].filter((u): u is string => !!u);
-  const urlsToTry = [
-    ...all.filter(isEventlyUrl),
-    ...all.filter((u) => !isEventlyUrl(u)),
-  ];
-  // Dedupe
-  const seen = new Set<string>();
-  const ordered = urlsToTry.filter((u) => (seen.has(u) ? false : (seen.add(u), true)));
-
-  for (const url of ordered) {
-    // Plain fetch first (cheap + works for evently/most CMS), Firecrawl fallback.
-    let image = await plainFetchPageImage(url);
-    if (!image && firecrawlKey) image = await scrapePageForImage(url, firecrawlKey);
-    if (image) return image;
-    await delay(200);
-  }
-
-  return null;
-}
-
-/** Generic short names ("GRAVE", "FIRE") match anything in web search. Skip them. */
-function isAmbiguousArtistName(artist: string): boolean {
-  const tokens = normalizeText(cleanArtistForLookup(artist)).split(" ").filter(Boolean);
-  if (tokens.length === 0) return true;
-  if (tokens.length === 1 && tokens[0].length <= 6) return true;
-  return false;
-}
-
-async function lookupSearchImage(
-  artist: string,
-  venue: string,
-  date: string,
-  firecrawlKey: string,
-): Promise<string | null> {
-  if (isAmbiguousArtistName(artist)) return null;
-  const year = new Date(date).getUTCFullYear();
-  const queries = [
-    `"${artist}" band official photo`,
-    `"${artist}" ${year} press photo`,
-  ];
-
-  for (const query of queries) {
-    try {
-      const searchRes = await fetchWithTimeout("https://api.firecrawl.dev/v1/search", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${firecrawlKey}`,
-          "Content-Type": "application/json",
+    const out = await ai.json<{ is_unique: boolean; canonical: string }>({
+      system:
+        "You decide if a short string unambiguously names a touring music or comedy act. " +
+        "If common-word names ('Grave', 'Pain'), return is_unique=false. Else return canonical artist name.",
+      user: `Name: ${artist}`,
+      schema: {
+        type: "object",
+        properties: {
+          is_unique: { type: "boolean" },
+          canonical: { type: "string" },
         },
-        body: JSON.stringify({ query, limit: 4 }),
-      }, 15_000);
+        required: ["is_unique", "canonical"],
+        additionalProperties: false,
+      },
+    });
+    return { ok: out.is_unique, canonical: out.canonical };
+  } catch {
+    return { ok: false };
+  }
+}
 
-      if (!searchRes.ok) continue;
-
-      const searchData = await searchRes.json();
-      const results: Array<{ url?: string; link?: string; image?: string; thumbnail?: string }> =
-        (Array.isArray(searchData?.data) ? searchData.data : []) ||
-        (Array.isArray(searchData?.results) ? searchData.results : []);
-
-      for (const result of results.slice(0, 3)) {
-        const directImage = result.image || result.thumbnail;
-        if (directImage && await isUsableImageUrl(directImage, false)) {
-          return directImage;
-        }
-
-        const resultUrl = result.url || result.link;
-        if (!resultUrl) continue;
-
-        const scraped = await scrapePageForImage(resultUrl, firecrawlKey);
-        if (scraped) return scraped;
-      }
-    } catch {
-      // continue
+async function findImage(
+  ai: AiClient,
+  artist: string,
+  source_url: string | null,
+): Promise<string | null> {
+  // 1. og:image of source_url (most reliable for Eventim, Livespot)
+  if (source_url) {
+    const html = await getText(source_url);
+    if (html) {
+      const og = extractOg(html);
+      if (og && !BAD_HOST.test(og) && !BAD_PATH.test(og) && (await head(og))) return og;
     }
   }
+  // 2. Disambiguate before web/db lookup
+  const dis = await disambiguate(ai, artist);
+  if (!dis.ok) return null;
+  const name = dis.canonical ?? artist;
 
+  // 3. Spotify
+  const sp = await spotifyImage(name);
+  if (sp) return sp;
+
+  // 4. MusicBrainz exists check + Wikipedia
+  const mbid = await musicbrainzMbid(name);
+  if (mbid) {
+    const wp = await wikipediaImage(name);
+    if (wp && !BAD_HOST.test(wp)) return wp;
+  }
   return null;
 }
 
-function cleanArtistForLookup(artist: string): string {
-  return artist.split(/[:\-–—|(]/)[0].trim();
+async function patchJob(jobId: string, patch: Record<string, unknown>) {
+  await db().from("scrape_jobs").update(patch).eq("id", jobId);
 }
 
-function hasHighConfidenceArtistMatch(inputArtist: string, spotifyArtist: string): boolean {
-  const input = normalizeText(inputArtist);
-  const candidate = normalizeText(spotifyArtist);
+async function runJob(jobId: string) {
+  const sb = db();
+  const ai = new AiClient();
+  const { data: rows } = await sb
+    .from("concerts")
+    .select("id, artist, source_url")
+    .is("image_url", null)
+    .gte("date", new Date().toISOString())
+    .order("date", { ascending: true })
+    .limit(500);
 
-  if (!input || !candidate) return false;
-  if (input === candidate) return true;
+  const total = rows?.length ?? 0;
+  await patchJob(jobId, { status: "running", total, current_step: "fetching" });
 
-  const inputTokens = input.split(" ").filter(Boolean);
-  const candidateTokens = candidate.split(" ").filter(Boolean);
-  if (!inputTokens.length || !candidateTokens.length) return false;
-
-  if (inputTokens[0] !== candidateTokens[0]) return false;
-
-  const common = inputTokens.filter((token) => candidateTokens.includes(token)).length;
-  const inputCoverage = common / inputTokens.length;
-  const candidateCoverage = common / candidateTokens.length;
-
-  return inputCoverage >= 0.8 && candidateCoverage >= 0.6;
-}
-
-async function getSpotifyToken(): Promise<string | null> {
-  if (spotifyToken && Date.now() < spotifyTokenExpiry) return spotifyToken;
-
-  const clientId = Deno.env.get("SPOTIFY_CLIENT_ID");
-  const clientSecret = Deno.env.get("SPOTIFY_CLIENT_SECRET");
-  if (!clientId || !clientSecret) return null;
-
-  try {
-    const res = await fetchWithTimeout("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: "grant_type=client_credentials",
-    }, 10_000);
-
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    if (data.access_token) {
-      spotifyToken = data.access_token;
-      spotifyTokenExpiry = Date.now() + Math.max((data.expires_in - 60) * 1000, 60_000);
-      return spotifyToken;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function lookupSpotifyImage(artist: string): Promise<string | null> {
-  const token = await getSpotifyToken();
-  if (!token) return null;
-
-  const cleanName = cleanArtistForLookup(artist);
-  try {
-    const res = await fetchWithTimeout(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(cleanName)}&type=artist&limit=5`,
-      { headers: { Authorization: `Bearer ${token}` } },
-      10_000,
-    );
-
-    if (!res.ok) return null;
-    const data = await res.json();
-    const items = data?.artists?.items || [];
-
-    for (const item of items) {
-      if (!hasHighConfidenceArtistMatch(cleanName, item?.name || "")) continue;
-      const images = item?.images || [];
-      if (!images.length) continue;
-
-      const best = images.find((img: { width?: number }) => img.width === 640) || images[0];
-      if (!best?.url) continue;
-
-      if (await isUsableImageUrl(best.url, true)) {
-        return best.url;
+  let updated = 0;
+  for (let i = 0; i < (rows?.length ?? 0); i++) {
+    const c = rows![i];
+    try {
+      const url = await findImage(ai, c.artist, c.source_url);
+      if (url) {
+        await sb.from("concerts").update({ image_url: url }).eq("id", c.id);
+        updated++;
       }
+    } catch (_e) { /* continue */ }
+    if (i % 5 === 0) {
+      await patchJob(jobId, { progress: i + 1, events_upserted: updated, ai_calls: ai.usage.calls });
     }
-
-    return null;
-  } catch {
-    return null;
   }
+  await patchJob(jobId, {
+    status: "completed",
+    progress: total,
+    events_upserted: updated,
+    ai_calls: ai.usage.calls,
+    finished_at: new Date().toISOString(),
+    current_step: "done",
+  });
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+
+  const adminId = await authedAdminUserId(req);
+  if (!adminId) {
+    return new Response(JSON.stringify({ error: "Admin only" }), {
+      status: 403, headers: { ...cors, "Content-Type": "application/json" },
+    });
   }
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const body = await req.json().catch(() => ({}));
-    const cursorId = typeof body.cursorId === "string" && body.cursorId.length > 0 ? body.cursorId : null;
-    const chain = body.chain !== false;
-    const batchSizeRaw = Number(body.batchSize ?? DEFAULT_BATCH_SIZE);
-    const batchSize = Number.isFinite(batchSizeRaw)
-      ? Math.max(1, Math.min(100, Math.trunc(batchSizeRaw)))
-      : DEFAULT_BATCH_SIZE;
-
-    let query = supabase
-      .from("concerts")
-      .select("id, artist, venue, date, image_url, source_url, ticket_url")
-      .gte("date", new Date().toISOString())
-      .is("image_url", null)
-      .order("id", { ascending: true })
-      .limit(batchSize);
-
-    if (cursorId) query = query.gt("id", cursorId);
-
-    const { data: concerts, error } = await query;
-
-    if (error) throw error;
-    if (!concerts || concerts.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: "Done. No more images to refresh.", updated: 0 }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    console.log(`Batch cursor=${cursorId ?? "start"}: ${concerts.length} concerts with missing/invalid images`);
-
-    const startTime = Date.now();
-    const spotifyCache = new Map<string, string | null>();
-    let lastCursorId: string | null = cursorId;
-    let processed = 0;
-    let updated = 0;
-    let sourceHits = 0;
-    let searchHits = 0;
-    let spotifyHits = 0;
-    let unresolved = 0;
-    let cleared = 0;
-    let timedOut = false;
-
-    for (const concert of concerts) {
-      if (Date.now() - startTime > TIME_BUDGET_MS) {
-        timedOut = true;
-        console.log("Time budget exceeded, chaining from last processed cursor");
-        break;
-      }
-
-      processed++;
-      lastCursorId = concert.id;
-
-      // Query already filters for image_url IS NULL, no skip needed
-
-      let imageUrl: string | null = null;
-
-      if (firecrawlKey) {
-        imageUrl = await lookupSourcePageImage(concert.source_url, concert.ticket_url, firecrawlKey);
-        if (imageUrl && await isSharedVenueImage(supabase, imageUrl, concert.artist)) {
-          console.log(`Rejected shared venue image for ${concert.artist}: ${imageUrl}`);
-          imageUrl = null;
-        }
-        if (imageUrl) sourceHits++;
-      }
-
-      // Step 2: Search
-      if (!imageUrl && firecrawlKey) {
-        imageUrl = await lookupSearchImage(concert.artist, concert.venue, concert.date, firecrawlKey);
-        if (imageUrl && await isSharedVenueImage(supabase, imageUrl, concert.artist)) {
-          imageUrl = null;
-        }
-        if (imageUrl) searchHits++;
-      }
-
-      // Step 3: Spotify
-      if (!imageUrl) {
-        const cacheKey = normalizeText(cleanArtistForLookup(concert.artist));
-        if (spotifyCache.has(cacheKey)) {
-          imageUrl = spotifyCache.get(cacheKey) ?? null;
-        } else {
-          imageUrl = await lookupSpotifyImage(concert.artist);
-          spotifyCache.set(cacheKey, imageUrl);
-        }
-        if (imageUrl) spotifyHits++;
-      }
-
-      if (imageUrl) {
-        const { error: updateError } = await supabase
-          .from("concerts")
-          .update({ image_url: imageUrl })
-          .eq("id", concert.id);
-
-        if (updateError) {
-          unresolved++;
-          console.error(`Failed to update image for ${concert.artist}:`, updateError.message);
-        } else {
-          updated++;
-        }
-      } else {
-        unresolved++;
-      }
-
-      await delay(250);
-    }
-
-    const message = `Batch cursor=${cursorId ?? "start"}: processed ${processed}/${concerts.length}, updated ${updated} (source: ${sourceHits}, search: ${searchHits}, spotify: ${spotifyHits}), cleared ${cleared}, unresolved ${unresolved}`;
-    console.log(message);
-
-    const hasMore = !!lastCursorId && processed > 0 && (timedOut || concerts.length === batchSize);
-    const shouldChain = chain && hasMore;
-
-    if (shouldChain) {
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
-      fetch(`${supabaseUrl}/functions/v1/fetch-images`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${anonKey}`,
-        },
-        body: JSON.stringify({ cursorId: lastCursorId, chain: true, batchSize }),
-      }).catch((err) => console.error("Chain call failed:", err));
-    }
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message,
-        processed,
-        updated,
-        sourceHits,
-        searchHits,
-        spotifyHits,
-        cleared,
-        unresolved,
-        nextCursorId: hasMore ? lastCursorId : null,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (err) {
-    console.error("fetch-images error:", err);
-    return new Response(
-      JSON.stringify({ success: false, message: (err as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+  const sb = db();
+  const { data: job, error } = await sb
+    .from("scrape_jobs")
+    .insert({ kind: "images", status: "queued", triggered_by: adminId })
+    .select("id")
+    .single();
+  if (error || !job) {
+    return new Response(JSON.stringify({ error: error?.message ?? "Job create failed" }), {
+      status: 500, headers: { ...cors, "Content-Type": "application/json" },
+    });
   }
+
+  EdgeRuntime.waitUntil(
+    runJob(job.id).catch(async (e) => {
+      await patchJob(job.id, {
+        status: "failed",
+        error: (e as Error).message.slice(0, 1000),
+        finished_at: new Date().toISOString(),
+      });
+    }),
+  );
+
+  return new Response(JSON.stringify({ jobId: job.id, status: "queued" }), {
+    status: 202, headers: { ...cors, "Content-Type": "application/json" },
+  });
 });
