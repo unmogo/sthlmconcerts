@@ -1,7 +1,32 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import { Activity, Clock, AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { Activity, Clock, AlertTriangle, CheckCircle2, X, Loader2 } from "lucide-react";
+
+interface ScrapeJob {
+  id: string;
+  kind: string;
+  status: string;
+  current_step: string | null;
+  progress: number;
+  total: number;
+  events_found: number;
+  events_upserted: number;
+  ai_calls: number;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+async function fetchActiveJobs(): Promise<ScrapeJob[]> {
+  const { data, error } = await supabase
+    .from("scrape_jobs")
+    .select("*")
+    .order("started_at", { ascending: false })
+    .limit(5);
+  if (error) throw error;
+  return (data as ScrapeJob[]) || [];
+}
 
 interface ScrapeLog {
   id: string;
