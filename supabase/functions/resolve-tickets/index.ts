@@ -127,6 +127,20 @@ function pickEventlyUrl(ticketUrl: string | null, sourceUrl: string | null): str
   return null;
 }
 
+async function authedAdmin(req: Request): Promise<boolean> {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return false;
+  const c = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: auth } },
+  });
+  const { data } = await c.auth.getUser(auth.replace("Bearer ", ""));
+  const uid = data?.user?.id;
+  if (!uid) return false;
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: ok } = await sb.rpc("has_role", { _user_id: uid, _role: "admin" });
+  return !!ok;
+}
+
 async function lookupTicketUrlFromPage(url: string, firecrawlKey: string): Promise<string | null> {
   try {
     const rawRes = await fetchWithTimeout(url, {
@@ -241,6 +255,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (!(await authedAdmin(req))) {
+      return new Response(JSON.stringify({ success: false, message: "Admin only" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
