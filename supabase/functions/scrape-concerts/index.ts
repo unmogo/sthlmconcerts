@@ -27,8 +27,8 @@ async function authedAdminUserId(req: Request): Promise<string | null> {
     Deno.env.get("SUPABASE_ANON_KEY")!,
     { global: { headers: { Authorization: auth } } },
   );
-  const { data } = await c.auth.getClaims(auth.replace("Bearer ", ""));
-  const uid = data?.claims?.sub as string | undefined;
+  const { data } = await c.auth.getUser(auth.replace("Bearer ", ""));
+  const uid = data?.user?.id;
   if (!uid) return null;
   const sb = db();
   const { data: ok } = await sb.rpc("has_role", { _user_id: uid, _role: "admin" });
