@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractTicketUrlFromHtml } from "../_shared/event-extract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +8,7 @@ const corsHeaders = {
 };
 
 const DEFAULT_BATCH_SIZE = 40;
-const TIME_BUDGET_MS = 840_000;
+const TIME_BUDGET_MS = 55_000;
 
 const TICKET_SELLER_DOMAINS = [
   "ticketmaster.se", "ticketmaster.com",
@@ -126,6 +127,20 @@ function pickEventlyUrl(ticketUrl: string | null, sourceUrl: string | null): str
   return null;
 }
 
+async function authedAdmin(req: Request): Promise<boolean> {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return false;
+  const c = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: auth } },
+  });
+  const { data } = await c.auth.getUser(auth.replace("Bearer ", ""));
+  const uid = data?.user?.id;
+  if (!uid) return false;
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: ok } = await sb.rpc("has_role", { _user_id: uid, _role: "admin" });
+  return !!ok;
+}
+
 async function lookupTicketUrlFromPage(url: string, firecrawlKey: string): Promise<string | null> {
   try {
     const rawRes = await fetchWithTimeout(url, {
@@ -136,6 +151,8 @@ async function lookupTicketUrlFromPage(url: string, firecrawlKey: string): Promi
 
     if (rawRes.ok) {
       const rawHtml = await rawRes.text();
+      const directFromHtml = extractTicketUrlFromHtml(rawHtml);
+      if (directFromHtml) return directFromHtml;
       const rawCandidates = [
         ...Array.from(rawHtml.matchAll(/href=["']([^"']+)["']/gi)).map((m) => m[1]),
         ...extractUrlsFromText(rawHtml),
@@ -238,6 +255,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (!(await authedAdmin(req))) {
+      return new Response(JSON.stringify({ success: false, message: "Admin only" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
@@ -309,8 +333,9 @@ Deno.serve(async (req) => {
       if (resolvedUrl) {
         pageHits++;
       } else {
-        resolvedUrl = await searchTicketUrlFallback(concert.artist, concert.venue, concert.date, firecrawlKey);
-        if (resolvedUrl) searchHits++;
+        // Do not web-search tickets here: it is slow and can attach wrong sellers.
+        // Keep Evently as a fallback external event page if the direct button is not visible.
+        resolvedUrl = null;
       }
 
       if (resolvedUrl) {
@@ -331,7 +356,7 @@ Deno.serve(async (req) => {
         console.log(`✗ ${concert.artist}: no direct seller found for ${eventlyUrl}`);
       }
 
-      await delay(250);
+      await delay(75);
     }
 
     const message = `Batch cursor=${cursorId ?? "start"}: processed ${processed}/${concerts.length}, updated ${updated} (page: ${pageHits}, search: ${searchHits}), ${unresolved} unresolved`;

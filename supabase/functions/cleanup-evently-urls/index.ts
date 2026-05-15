@@ -1,6 +1,7 @@
 // Edge function: scrape evently.se event pages and replace ticket_url with
 // the real vendor URL (Ticketmaster, Tickster, Nortic, Billetto, Dice, etc.).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { extractTicketUrlFromHtml } from "../_shared/event-extract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,8 +33,29 @@ function extractVendorUrl(html: string): string | null {
   return null;
 }
 
+async function authedAdmin(req: Request): Promise<boolean> {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return false;
+  const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: auth } },
+  });
+  const { data } = await anon.auth.getUser(auth.replace("Bearer ", ""));
+  const uid = data?.user?.id;
+  if (!uid) return false;
+  const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: ok } = await service.rpc("has_role", { _user_id: uid, _role: "admin" });
+  return !!ok;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  if (!(await authedAdmin(req))) {
+    return new Response(JSON.stringify({ error: "Admin only" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -72,7 +94,7 @@ Deno.serve(async (req) => {
           return;
         }
         const html = await res.text();
-        const vendor = extractVendorUrl(html);
+        const vendor = extractTicketUrlFromHtml(html) ?? extractVendorUrl(html);
         if (vendor) {
           await supabase.from("concerts").update({ ticket_url: vendor, tickets_available: true }).eq("id", r.id);
           updated++;

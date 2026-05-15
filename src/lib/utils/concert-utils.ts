@@ -33,7 +33,19 @@ export function getDisplayImageUrl(rawUrl: string | null | undefined): string | 
   const url = rawUrl?.trim();
   if (!url) return null;
   const lower = url.toLowerCase();
-  if (lower.includes("evently.se/img/")) return null; // placeholder
+  if (
+    lower.includes("evently.se/img/") ||
+    lower.includes("staticmap") ||
+    lower.includes("maps.tickster.com") ||
+    lower.includes("/maps/api") ||
+    lower.includes("sports-photographer") ||
+    lower.includes("fallback-art") ||
+    lower.includes("gray-wcsc-prod.gtv-cdn.com") ||
+    lower.includes("m.media-amazon.com") ||
+    lower.includes("gettyimages.com") ||
+    lower.includes("alamy.com") ||
+    lower.includes("shutterstock.com")
+  ) return null;
   if (lower.includes("evently.se/")) {
     const base = import.meta.env.VITE_SUPABASE_URL;
     if (base) {

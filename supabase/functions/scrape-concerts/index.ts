@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
 import { SOURCES, fetchSource } from "../_shared/sources.ts";
 import { aiResolveVenue, isValidVenue, quickResolveVenue } from "../_shared/venues.ts";
+import { goodImageUrl } from "../_shared/event-extract.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -95,6 +96,7 @@ async function runJob(jobId: string) {
         if (blocked.has(key)) continue;
 
         const ticket = d.ticket_url && !/evently\.se/i.test(d.ticket_url) ? d.ticket_url : null;
+        const image = goodImageUrl(d.image_url);
 
         // Upsert by source_url+date as primary dedupe key
         const row = {
@@ -103,7 +105,7 @@ async function runJob(jobId: string) {
           date: date.toISOString(),
           ticket_url: ticket,
           tickets_available: !!ticket,
-          image_url: d.image_url || null,
+          image_url: image,
           source: src.source_label,
           source_url: d.source_url,
           event_type: d.event_type,
