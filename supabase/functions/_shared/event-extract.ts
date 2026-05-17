@@ -9,6 +9,7 @@ export const TICKET_SELLER_DOMAINS = [
 
 const REDIRECT_HOSTS = ["evyy.net", "ffrk.se", "evently.se"];
 const URL_RE = /https?:\/\/[^\s)\]>"']+/gi;
+const BLOCKED_APP_HOSTS = ["lovable.app", "id-preview--"];
 
 export function decodeHtml(value: string): string {
   return value
@@ -50,8 +51,33 @@ function isSellerHost(hostname: string): boolean {
   return TICKET_SELLER_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`) || hostname.includes(domain));
 }
 
+export function normalizeExternalUrl(rawUrl: string | null | undefined, baseUrl?: string): string | null {
+  const raw = decodeHtml(rawUrl ?? "").trim();
+  if (!raw || /^(https?:?)$/i.test(raw)) return null;
+  try {
+    const parsed = baseUrl ? new URL(raw, baseUrl) : new URL(raw);
+    if (!["http:", "https:"].includes(parsed.protocol)) return null;
+    const host = parsed.hostname.toLowerCase();
+    if (BLOCKED_APP_HOSTS.some((blocked) => host.includes(blocked))) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function isTicketSellerUrl(url: string | null | undefined): boolean {
+  const normalized = normalizeExternalUrl(url);
+  if (!normalized) return false;
+  try {
+    return isSellerHost(new URL(normalized).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 export function extractTicketUrl(rawUrl: string): string | null {
   const decodedInput = decodeMaybe(rawUrl);
+  if (!normalizeExternalUrl(decodedInput)) return null;
   try {
     const parsed = new URL(decodedInput);
     const hostname = parsed.hostname.toLowerCase();
@@ -97,13 +123,31 @@ export function isBadImageUrl(url: string | null | undefined): boolean {
   if (!lower) return true;
   return /evently\.se\/img\/event\.jpg|map-placeholder|staticmap|maps\.tickster\.com|maps\/api|google\.com\/maps|googleapis\.com\/maps/.test(lower)
     || /fallback-art|placeholder|sports-photographer|sport[s-]|venue-map|\/logo\.|tickster_logo|favicon|apple-touch-icon/.test(lower)
-    || /ytimg\.com|imdb\.|tmdb\.|themoviedb|m\.media-amazon\.com|gray-wcsc-prod\.gtv-cdn\.com/.test(lower)
+    || /facebook\.com|graph\.facebook\.com|fbcdn\.net|ytimg\.com|imdb\.|tmdb\.|themoviedb|m\.media-amazon\.com|gray-wcsc-prod\.gtv-cdn\.com/.test(lower)
     || /gettyimages\.com|alamy\.com|shutterstock\.com|depositphotos\.com/.test(lower)
     || /wikimedia\.org\/wikipedia\/commons\/thumb/.test(lower);
 }
 
+export function upgradeImageUrl(url: string | null | undefined): string | null {
+  const clean = normalizeExternalUrl(url);
+  if (!clean) return null;
+  if (/static\.tickster\.com\/cdn-cgi\/image\//i.test(clean)) {
+    return clean
+      .replace(/width=\d+/i, "width=960")
+      .replace(/height=\d+/i, "height=540");
+  }
+  return clean;
+}
+
+export function isLowQualityImageUrl(url: string | null | undefined): boolean {
+  const lower = (url ?? "").toLowerCase();
+  const ticksterWidth = lower.match(/static\.tickster\.com\/cdn-cgi\/image\/[^/]*width=(\d+)/)?.[1];
+  if (ticksterWidth && Number(ticksterWidth) < 700) return true;
+  return /\/teaser\/222x222\/|[\/_-]222x222|width=(1\d\d|2\d\d|3\d\d)\b|height=(1\d\d|2\d\d|3\d\d)\b/.test(lower);
+}
+
 export function goodImageUrl(url: string | null | undefined): string | null {
-  const clean = url?.trim();
+  const clean = upgradeImageUrl(url);
   return clean && !isBadImageUrl(clean) ? clean : null;
 }
 
