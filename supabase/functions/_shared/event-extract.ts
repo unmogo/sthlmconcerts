@@ -157,6 +157,31 @@ export function extractEventImageUrl(html: string, baseUrl: string): string | nu
   return goodImageUrl(abs);
 }
 
+export function extractBestImageUrlFromHtml(html: string, baseUrl: string): string | null {
+  const candidates = new Set<string>();
+  const meta = extractMetaContent(html, "og:image") ?? extractMetaContent(html, "twitter:image");
+  if (meta) candidates.add(meta);
+  for (const match of html.matchAll(/<(?:img|source)[^>]+(?:src|data-src|srcset)=['"]([^'"]+)['"]/gi)) {
+    for (const part of match[1].split(",")) candidates.add(part.trim().split(/\s+/)[0]);
+  }
+  for (const match of html.matchAll(/https?:\/\/static\.tickster\.com\/cdn-cgi\/image\/[^\s"'<>\\)]+/gi)) candidates.add(match[0]);
+  const ranked = [...candidates]
+    .map((raw) => goodImageUrl(absoluteUrl(raw, baseUrl)))
+    .filter((url): url is string => !!url)
+    .sort((a, b) => imageScore(b) - imageScore(a));
+  return ranked[0] ?? null;
+}
+
+function imageScore(url: string): number {
+  const lower = url.toLowerCase();
+  let score = 0;
+  if (/static\.tickster\.com\/cdn-cgi\/image/.test(lower)) score += 80;
+  if (/eventim\.se\/obj\/media\/.*(?:1240x480|leaderboard|artwork)/.test(lower)) score += 70;
+  if (/width=960|1240x480|1001x160/.test(lower)) score += 30;
+  if (isLowQualityImageUrl(lower)) score -= 60;
+  return score;
+}
+
 export function extractJsonLd(html: string): unknown[] {
   const scripts = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
   const out: unknown[] = [];
