@@ -1,7 +1,7 @@
 // Edge function: scrape evently.se event pages and replace ticket_url with
 // the real vendor URL (Ticketmaster, Tickster, Nortic, Billetto, Dice, etc.).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { extractTicketUrlFromHtml } from "../_shared/event-extract.ts";
+import { extractTicketUrlFromHtml, isTicketSellerUrl, normalizeExternalUrl } from "../_shared/event-extract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,8 +66,8 @@ Deno.serve(async (req) => {
 
   const { data: rows, error } = await supabase
     .from("concerts")
-    .select("id, ticket_url")
-    .ilike("ticket_url", "%evently.se%")
+    .select("id, ticket_url, source_url")
+    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:),ticket_url.is.null,and(ticket_url.eq.,source_url.ilike.%evently.se%)")
     .limit(limit);
 
   if (error) {
@@ -85,7 +85,14 @@ Deno.serve(async (req) => {
   await Promise.all(
     (rows ?? []).map(async (r) => {
       try {
-        const res = await fetch(r.ticket_url, {
+        const eventlyUrl = normalizeExternalUrl(r.ticket_url) && /evently\.se/i.test(r.ticket_url)
+          ? normalizeExternalUrl(r.ticket_url)
+          : normalizeExternalUrl(r.source_url);
+        if (!eventlyUrl) {
+          failed++;
+          return;
+        }
+        const res = await fetch(eventlyUrl, {
           headers: { "User-Agent": "Mozilla/5.0 (compatible; STHLMConcertsBot/1.0)" },
           redirect: "follow",
         });
@@ -95,14 +102,14 @@ Deno.serve(async (req) => {
         }
         const html = await res.text();
         const vendor = extractTicketUrlFromHtml(html) ?? extractVendorUrl(html);
-        if (vendor) {
+        if (isTicketSellerUrl(vendor)) {
           await supabase.from("concerts").update({ ticket_url: vendor, tickets_available: true }).eq("id", r.id);
           updated++;
-          results.push({ id: r.id, from: r.ticket_url, to: vendor });
+          results.push({ id: r.id, from: eventlyUrl, to: vendor });
         } else {
           // No real vendor — keep evently.se as fallback (still a working external link)
           cleared++;
-          results.push({ id: r.id, from: r.ticket_url, to: null });
+          results.push({ id: r.id, from: eventlyUrl, to: null });
         }
       } catch (_e) {
         failed++;
@@ -113,7 +120,7 @@ Deno.serve(async (req) => {
   const { count: remaining } = await supabase
     .from("concerts")
     .select("id", { count: "exact", head: true })
-    .ilike("ticket_url", "%evently.se%");
+    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:),and(ticket_url.is.null,source_url.ilike.%evently.se%)");
 
   return new Response(
     JSON.stringify({ processed: rows?.length ?? 0, updated, kept: cleared, failed, remaining, results: results.slice(0, 10) }),
