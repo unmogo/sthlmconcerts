@@ -17,10 +17,22 @@ export function getTicketLink(
   ticketUrl: string | null | undefined,
   sourceUrl?: string | null | undefined
 ): string | null {
-  const t = ticketUrl?.trim();
+  const t = safeExternalUrl(ticketUrl);
   if (t) return t;
-  const s = sourceUrl?.trim();
-  return s || null;
+  return safeExternalUrl(sourceUrl);
+}
+
+function safeExternalUrl(rawUrl: string | null | undefined): string | null {
+  const raw = rawUrl?.trim();
+  if (!raw || /^(https?:?)$/i.test(raw)) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.hostname.includes("lovable.app")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -45,6 +57,8 @@ export function getDisplayImageUrl(rawUrl: string | null | undefined): string | 
     lower.includes("gettyimages.com") ||
     lower.includes("alamy.com") ||
     lower.includes("shutterstock.com")
+    || lower.includes("facebook.com")
+    || lower.includes("fbcdn.net")
   ) return null;
   if (lower.includes("evently.se/")) {
     const base = import.meta.env.VITE_SUPABASE_URL;
