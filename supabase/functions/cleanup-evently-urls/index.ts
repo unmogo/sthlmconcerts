@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
   const { data: rows, error } = await supabase
     .from("concerts")
     .select("id, ticket_url, source_url")
-    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:),ticket_url.is.null,and(ticket_url.eq.,source_url.ilike.%evently.se%)")
+    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:),and(ticket_url.is.null,source_url.ilike.%evently.se%)")
     .limit(limit);
 
   if (error) {
