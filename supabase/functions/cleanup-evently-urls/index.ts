@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
           updated++;
           results.push({ id: r.id, from: eventlyUrl, to: vendor });
         } else {
-          // No real vendor — keep evently.se as fallback (still a working external link)
+          await supabase.from("concerts").update({ ticket_url: null, tickets_available: false }).eq("id", r.id);
           cleared++;
           results.push({ id: r.id, from: eventlyUrl, to: null });
         }
