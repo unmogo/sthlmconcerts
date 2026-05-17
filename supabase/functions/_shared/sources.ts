@@ -55,6 +55,13 @@ export const SOURCES: SourceDef[] = [
     source_label: "eventim.se",
     waitFor: 2000,
   },
+  {
+    name: "ra-stockholm",
+    url: "https://ra.co/events/se/stockholm?page=1",
+    default_event_type: "concert",
+    source_label: "ra.co",
+    waitFor: 2500,
+  },
 ];
 
 const MONTHS: Record<string, string> = {
