@@ -42,9 +42,16 @@ export const SOURCES: SourceDef[] = [
     waitFor: 2000,
   },
   {
-    name: "eventim-stockholm",
-    url: "https://www.eventim.se/city/stockholm-12/",
+    name: "eventim-music",
+    url: "https://www.eventim.se/events/musik-17/",
     default_event_type: "concert",
+    source_label: "eventim.se",
+    waitFor: 2000,
+  },
+  {
+    name: "eventim-comedy",
+    url: "https://www.eventim.se/events/komedi-169/",
+    default_event_type: "comedy",
     source_label: "eventim.se",
     waitFor: 2000,
   },
@@ -72,7 +79,7 @@ export async function fetchSource(
 ): Promise<EventDraft[]> {
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
-  if (src.name === "eventim-stockholm") return fetchEventimStockholm(src, md);
+  if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md);
   // Cap markdown to keep AI context small
   const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
 
@@ -158,7 +165,8 @@ function parseEventimDate(lines: string[]): string | null {
     if (!time || !monthYear || !day) continue;
     const month = MONTHS[monthYear[1].toLowerCase()];
     if (!month) continue;
-    return `${monthYear[2]}-${month}-${day[1].padStart(2, "0")}T${time[1].padStart(2, "0")}:${time[2]}:00+01:00`;
+    const offset = Number(month) >= 4 && Number(month) <= 10 ? "+02:00" : "+01:00";
+    return `${monthYear[2]}-${month}-${day[1].padStart(2, "0")}T${time[1].padStart(2, "0")}:${time[2]}:00${offset}`;
   }
   return null;
 }
