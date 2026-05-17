@@ -55,6 +55,13 @@ export const SOURCES: SourceDef[] = [
     source_label: "eventim.se",
     waitFor: 2000,
   },
+  {
+    name: "ra-stockholm",
+    url: "https://ra.co/events/se/stockholm?page=1",
+    default_event_type: "concert",
+    source_label: "ra.co",
+    waitFor: 2500,
+  },
 ];
 
 const MONTHS: Record<string, string> = {
@@ -80,6 +87,7 @@ export async function fetchSource(
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
   if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md);
+  if (src.name === "ra-stockholm") return fetchRaStockholm(ai, src, md);
   // Cap markdown to keep AI context small
   const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
 
@@ -169,4 +177,50 @@ function parseEventimDate(lines: string[]): string | null {
     return `${monthYear[2]}-${month}-${day[1].padStart(2, "0")}T${time[1].padStart(2, "0")}:${time[2]}:00${offset}`;
   }
   return null;
+}
+
+// RA (Resident Advisor) auto-paginates listing. Probe page=1..N until "No results found"
+// or the page returns no event links, then ingest every page up to the last valid one.
+async function fetchRaStockholm(ai: AiClient, src: SourceDef, firstPageMd: string): Promise<EventDraft[]> {
+  const baseUrl = "https://ra.co/events/se/stockholm";
+  const out: EventDraft[] = [];
+  let page = 1;
+  let md = firstPageMd;
+
+  while (page <= 10) {
+    const isEmpty = /no results found/i.test(md) || !/\]\(https:\/\/ra\.co\/events\/\d+/.test(md);
+    if (isEmpty) break;
+
+    const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
+    try {
+      const parsed = await ai.json<{ events: EventDraft[] }>({
+        system: SYSTEM,
+        user: `Source: ra.co (Stockholm page ${page})\nDefault event_type: concert\n\n--- PAGE MARKDOWN ---\n${trimmed}`,
+        schema: EVENT_DRAFT_SCHEMA,
+        name: "extract_events",
+      });
+      for (const e of parsed.events ?? []) {
+        if (!e.artist || !e.source_url) continue;
+        out.push({
+          ...e,
+          event_type: e.event_type === "comedy" ? "comedy" : "concert",
+          source_url: e.source_url.startsWith("http")
+            ? e.source_url
+            : new URL(e.source_url, baseUrl).toString(),
+        });
+      }
+    } catch {
+      // Skip page on AI failure; try next.
+    }
+
+    page++;
+    try {
+      md = await scrapeMarkdown(`${baseUrl}?page=${page}`, { waitFor: src.waitFor });
+      if (!md || md.length < 200) break;
+    } catch {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return out;
 }
