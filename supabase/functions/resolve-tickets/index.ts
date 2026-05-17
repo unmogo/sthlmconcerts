@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { extractTicketUrlFromHtml } from "../_shared/event-extract.ts";
+import { extractTicketUrlFromHtml, isTicketSellerUrl } from "../_shared/event-extract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -338,10 +338,10 @@ Deno.serve(async (req) => {
         resolvedUrl = null;
       }
 
-      if (resolvedUrl) {
+      if (resolvedUrl && isTicketSellerUrl(resolvedUrl)) {
         const { error: updateError } = await supabase
           .from("concerts")
-          .update({ ticket_url: resolvedUrl })
+          .update({ ticket_url: resolvedUrl, tickets_available: true })
           .eq("id", concert.id);
 
         if (updateError) {
