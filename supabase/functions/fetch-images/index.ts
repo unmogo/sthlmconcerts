@@ -3,7 +3,7 @@
 // 4) Wikipedia  5) og:image of source_url. Skips ambiguous artists.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
-import { extractEventImageUrl, goodImageUrl, isBadImageUrl } from "../_shared/event-extract.ts";
+import { extractBestImageUrlFromHtml, extractEventImageUrl, goodImageUrl, isBadImageUrl, isLowQualityImageUrl } from "../_shared/event-extract.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -168,7 +168,7 @@ async function findImage(
   if (source_url) {
     const html = await getText(source_url);
     if (html) {
-      const og = extractEventImageUrl(html, source_url);
+      const og = extractBestImageUrlFromHtml(html, source_url) ?? extractEventImageUrl(html, source_url);
       if (og && (await imageReachable(og))) return og;
     }
   }
@@ -204,7 +204,7 @@ async function runJob(jobId: string) {
     .order("date", { ascending: true })
     .limit(1000);
 
-  const targets = (rows ?? []).filter((r) => !r.image_url || isBadImageUrl(r.image_url));
+  const targets = (rows ?? []).filter((r) => !r.image_url || isBadImageUrl(r.image_url) || isLowQualityImageUrl(r.image_url));
 
   const total = targets.length;
   await patchJob(jobId, { status: "running", total, current_step: "fetching" });
