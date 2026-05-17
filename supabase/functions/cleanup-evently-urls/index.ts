@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
   const { data: rows, error } = await supabase
     .from("concerts")
     .select("id, ticket_url, source_url")
-    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:),and(ticket_url.is.null,source_url.ilike.%evently.se%)")
+    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:)")
     .limit(limit);
 
   if (error) {
@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
   const { count: remaining } = await supabase
     .from("concerts")
     .select("id", { count: "exact", head: true })
-    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:),and(ticket_url.is.null,source_url.ilike.%evently.se%)");
+    .or("ticket_url.ilike.%evently.se%,ticket_url.in.(http,https,http:,https:)");
 
   return new Response(
     JSON.stringify({ processed: rows?.length ?? 0, updated, kept: cleared, failed, remaining, results: results.slice(0, 10) }),
