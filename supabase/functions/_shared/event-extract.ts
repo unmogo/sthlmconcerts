@@ -77,7 +77,7 @@ export function isTicketSellerUrl(url: string | null | undefined): boolean {
 
 export function extractTicketUrl(rawUrl: string): string | null {
   const decodedInput = decodeMaybe(rawUrl);
-  if (!normalizeExternalUrl(decodedInput)) return null;
+  if (!decodedInput || /^(https?:?)$/i.test(decodedInput.trim())) return null;
   try {
     const parsed = new URL(decodedInput);
     const hostname = parsed.hostname.toLowerCase();
