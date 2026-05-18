@@ -1,104 +1,48 @@
-## Step back: what's actually wrong today
+# Plan: SEO, i18n, auth & user features
 
-Reading the current pipeline (`scrape-concerts` 2,040 lines, `fetch-images` 665 lines, `resolve-tickets`, `cleanup-evently-urls`):
+## 1. SEO — per-event pages + sitewide polish
 
-- **Synchronous chaining over a single 150 s edge invocation.** Batches 1–10 each do a Firecrawl scrape + DB writes. When any one batch slows down, the whole chain dies with `IDLE_TIMEOUT`. The client `runMaintenanceJob` loop in `src/lib/api/concerts.ts` does up to 500 invocations sequentially — if the user closes the tab, it stops.
-- **No durable job state.** `scrape_log` records each batch but there is no single "run" row to poll, so the UI cannot tell "still running" from "crashed".
-- **Brittle HTML parsing.** Hundreds of regexes per source, plus `ADDRESS_TO_VENUE` lookups that miss anything new. This is why Jimmy Carr (eventim.se) is missing and venues collapse to "Stockholm, Sweden".
-- **Image lookup goes wide too early.** Web search for ambiguous names ("GRAVE") returns TV thumbnails. Disambiguation is a cheap LLM call, currently absent.
-- **No livespot.se / eventim.se coverage.**
+**Why your site loses to evenemangskollen**: every concert on this site lives at `/` only. Google has nothing to index per-event. Evenemangskollen has a dedicated URL per event with the event name in the URL, title, H1 and JSON-LD — so they rank for "<artist> | <venue>" queries.
 
-## What we'll build
+**Fix**:
+- Add slug column to `concerts` (e.g. `jimmy-carr-cirkus-2026-05-22`), backfill via migration trigger.
+- New route `/event/:slug` rendering an `EventDetail` page: H1 = artist, venue + date subtitle, image, "Get tickets" button, "Add to Calendar", share buttons, back link.
+- Install `react-helmet-async`; wrap app in `HelmetProvider`. Per-event `<Helmet>` sets title `"{Artist} — {Venue}, {Date} | STHLM Concerts"`, meta description, canonical, `og:image` (the event poster), and **Event JSON-LD** (`@type: MusicEvent` / `ComedyEvent`) — this is what produces Google's rich event cards.
+- Homepage cards link to `/event/:slug` (still keep ticket button to outbound vendor).
+- `scripts/generate-sitemap.ts` that pulls every concert and writes `public/sitemap.xml`; wire `predev` + `prebuild`.
+- Update `index.html`: better title/description, remove static canonical (Helmet handles it), add `hreflang` alternate for SV.
+- Update `public/llms.txt` and `robots.txt` with sitemap reference (already there).
 
-### 1. Job-runner pattern (`scrape_jobs` table)
+## 2. Swedish language toggle
 
-New table `scrape_jobs(id, kind, status, progress, totals, started_at, finished_at, error, triggered_by)`. Every admin-triggered run creates one row. Edge functions return `202 + jobId` immediately and do all real work in `EdgeRuntime.waitUntil(...)`. UI polls the row.
+- Install `i18next` + `react-i18next` + `i18next-browser-languagedetector`.
+- Two translation files: `src/i18n/en.json`, `src/i18n/sv.json` covering header, filter tabs, buttons, empty states, auth page, event detail labels. Concert data stays as-is (artist/venue are proper nouns).
+- Language switcher (🇬🇧/🇸🇪 toggle) in header, persists to `localStorage`.
+- Auto-detect from `navigator.language` on first visit (Swedish browsers → SV).
 
-RLS: admins can read; service role writes.
+## 3. Authentication upgrades
 
-### 2. New `scrape-concerts` (rewrite)
+- Enable managed Google + Apple OAuth via Lovable Cloud (one click each, no credentials needed).
+- Add **Magic Link** option to `/auth` page (`supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: origin } })`).
+- Keep existing email+password.
+- Auth page redesign: big "Continue with Google" / "Continue with Apple" buttons on top, "or" divider, then email field with two buttons (Sign in / Send magic link), and a collapsible password section.
 
-```text
-admin click "Refresh"
-  → POST /scrape-concerts { mode: "full" | "incremental" }
-  → insert scrape_jobs row, return { jobId } (202)
-  → waitUntil(runScrapeJob(jobId))
+## 4. User-facing features on each event
 
-runScrapeJob:
-  for each source in [evently-music, evently-standup, livespot-konsert,
-                      livespot-humor, eventim-stockholm]:
-     1. Firecrawl scrape listing page(s)
-     2. Lovable AI structured output → array<EventDraft>
-        { artist, venue_raw, address_raw, date_iso, ticket_url,
-          image_url, event_type, source_url }
-     3. resolveVenue(venue_raw, address_raw) → uses ADDRESS_TO_VENUE
-        first, falls back to AI venue resolver (one call per N events)
-     4. upsert into concerts (skip if in deleted_concerts)
-     5. update scrape_jobs.progress
-  finalize status
-```
+- **Share buttons**: native `navigator.share()` on mobile, fallback to copy-link + WhatsApp + X buttons. Lives on event detail page + small share icon on each card.
+- **Add to Google Calendar**: build a `https://calendar.google.com/calendar/render?action=TEMPLATE&...` URL from artist/venue/date. Button on event detail.
 
-Why this is faster and more reliable:
-- One AI call per page replaces dozens of regexes. Page count, not regex count, drives runtime.
-- `waitUntil` lets the job run up to the function's `wall_clock_timeout` (already 900 s) without holding the HTTP connection open.
-- A single durable `scrape_jobs` row means the user can close the tab and come back.
+## Technical details
 
-### 3. New `fetch-images` (rewrite)
+- **Files created**:
+  `src/pages/EventDetail.tsx`, `src/components/ShareButtons.tsx`, `src/components/AddToCalendar.tsx`, `src/components/LanguageSwitcher.tsx`, `src/i18n/{index.ts,en.json,sv.json}`, `src/lib/slug.ts`, `scripts/generate-sitemap.ts`, migration adding `slug` column + backfill trigger.
+- **Files edited**: `src/main.tsx` (HelmetProvider + i18n init), `src/App.tsx` (new `/event/:slug` route), `src/components/ConcertCard.tsx` (link to detail page, share icon), `src/components/Header.tsx` (language switcher), `src/pages/Auth.tsx` (Google/Apple/magic-link), `index.html` (meta), `package.json` (predev/prebuild), `src/integrations/supabase/types.ts` is auto-regenerated.
+- **Packages**: `react-helmet-async`, `i18next`, `react-i18next`, `i18next-browser-languagedetector`.
+- **Edge functions**: none needed.
+- **Sitemap**: regenerates on each dev/build from live DB; ~hundreds of URLs.
 
-Pipeline becomes:
-1. Trust evently `/api/file/` posters (already fixed).
-2. For records still missing images, ask Lovable AI to **disambiguate the artist name**: returns `{ canonical_name, is_ambiguous, hint }`. Skip web search when ambiguous and no hint resolves it.
-3. Try in order: Spotify → MusicBrainz → Wikipedia → og:image of `source_url`. Drop iTunes/web-search fallback — that's where TV thumbnails came from.
-4. Same job-runner pattern: 202 + jobId + polling.
-
-### 4. New sources
-
-- **livespot.se**: `?city=stockholm&category=konsert` and `&category=humor`. Listing page → AI extraction → upsert.
-- **eventim.se**: Stockholm city listing. Same extraction. Will pick up Jimmy Carr.
-
-### 5. UI changes (admin only, minimal)
-
-- `Header` Refresh / Images buttons now call the new endpoint, get `jobId`, and `ScrapeLogDashboard` shows the live `scrape_jobs` row (progress %, current source, errors). No separate page.
-- `triggerResolveTickets` keeps current cursor pattern (it's fast).
-- `runMaintenanceJob` loop in `src/lib/api/concerts.ts` is replaced by a `pollJob(jobId)` helper.
-
-### 6. Backlog cleanup (one-shot, after rewrite ships)
-
-- Run `cleanup-evently-urls` over remaining `%evently.se%` ticket URLs.
-- Run new `fetch-images` job to backfill the records whose `image_url` was nulled.
-
-## Model choice
-
-Lovable AI Gateway does not expose Anthropic Sonnet. Closest equivalents for "newest reasoning model":
-- **Default for parsing**: `google/gemini-3-flash-preview` — fast, cheap, JSON-mode, plenty good for HTML → struct.
-- **Hard cases (venue resolution, ambiguous artists)**: `openai/gpt-5-mini`.
-
-Both are wired through the existing `LOVABLE_API_KEY` (already set). No new secrets.
-
-## Files
-
-New:
-- `supabase/migrations/<ts>_scrape_jobs.sql`
-- `supabase/functions/_shared/ai.ts` (Lovable AI helper, structured output)
-- `supabase/functions/_shared/sources/evently.ts`
-- `supabase/functions/_shared/sources/livespot.ts`
-- `supabase/functions/_shared/sources/eventim.ts`
-
-Rewritten:
-- `supabase/functions/scrape-concerts/index.ts` (down from 2,040 → ~400 lines)
-- `supabase/functions/fetch-images/index.ts` (down from 665 → ~250 lines)
-
-Edited:
-- `src/lib/api/concerts.ts` — new `triggerScrape`/`triggerFetchImages` returning `{ jobId }`, `pollScrapeJob` helper.
-- `src/components/Header.tsx` + `ScrapeLogDashboard.tsx` — show live job row.
-- `supabase/config.toml` — keep `wall_clock_timeout = 900` on both.
-
-Removed (folded into new structure): old per-batch dispatcher, `ADDRESS_TO_VENUE` mega-table replaced by smaller curated map + AI fallback.
-
-## Risks / open items
-
-- Each scrape run will use a few hundred AI requests. Acceptable for an admin-only weekly action; will surface in the job row as `tokens_used` so cost stays visible.
-- livespot.se and eventim.se are JS-rendered; need Firecrawl `waitFor`. Verified in spec; handled.
-- `EdgeRuntime.waitUntil` is supported on Supabase edge runtime — confirmed in current docs.
-
-After approval, I'll ship the migration first, then the shared helpers, then each function and the UI wiring, then run the backlog one-shots.
+## Out of scope (ask if you want these)
+- Per-event OG image generation (uses existing `image_url`)
+- PWA install
+- Email digest of new shows
+- Server-side rendering (current setup uses client-side Helmet — fine for Googlebot, not for Slack/LinkedIn previews of event pages)
