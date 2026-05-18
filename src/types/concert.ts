@@ -15,6 +15,7 @@ export interface Concert {
   source_url: string | null;
   event_type: EventType;
   slug: string | null;
+  description: string | null;
   created_at: string;
   updated_at: string;
 }
