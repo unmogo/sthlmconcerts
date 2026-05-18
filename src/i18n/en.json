@@ -20,9 +20,10 @@
     "subtitleComedy": "All upcoming comedy shows in Stockholm",
     "subtitleFavourites": "Your saved concerts",
     "search": "Search artists or venues…",
-    "noResults": "No upcoming concerts found",
+    "noResults": "No upcoming events found",
+    "noResultsHint": "Click Refresh to scrape the latest events",
     "noFavourites": "No favourites saved yet",
-    "noFavouritesHint": "Click the heart on any concert to save it",
+    "noFavouritesHint": "Click the heart on any event to save it",
     "signInToSeeFavourites": "Sign in to see your favourites",
     "failedToLoad": "Failed to load concerts"
   },
