@@ -3,10 +3,13 @@ import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } f
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
 import { getDisplayImageUrl, getTicketLink, parseLocalDate } from "@/lib/utils/concert-utils";
+import { eventPath } from "@/lib/event-links";
 import { EditConcertDialog } from "./EditConcertDialog";
+import { ShareButtons } from "./ShareButtons";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 interface ConcertCardProps {
   concert: Concert;
@@ -23,7 +26,10 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   const { user, isAdmin } = useAuth();
   const { favoriteIds, toggleFavorite } = useFavorites();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const ticketUrl = getTicketLink(concert.ticket_url, concert.source_url);
+  const detailUrl = eventPath(concert);
+  const shareUrl = `${typeof window !== "undefined" ? window.location.origin : "https://sthlmconcerts.lovable.app"}${detailUrl}`;
 
   const concertDate = parseLocalDate(concert.date);
   const saleDate = concert.ticket_sale_date ? parseLocalDate(concert.ticket_sale_date) : null;
@@ -138,12 +144,12 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
           )}
         </div>
 
-        {/* Artist name overlay */}
-        <div className="absolute bottom-3 left-3 right-3 z-10">
-          <h3 className="text-xl font-bold text-foreground leading-tight">
+        {/* Artist name overlay — links to event detail */}
+        <Link to={detailUrl} className="absolute bottom-3 left-3 right-3 z-10" aria-label={`Open ${concert.artist} details`}>
+          <h3 className="text-xl font-bold text-foreground leading-tight hover:underline">
             {concert.artist}
           </h3>
-        </div>
+        </Link>
       </div>
 
       {/* Content */}
@@ -186,29 +192,31 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
           </div>
         )}
 
-        {/* Action */}
-        {ticketUrl ? (
-          <a
-            href={ticketUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={handleTicketClick}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-neon px-4 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            <Ticket className="h-4 w-4" />
-            {ticketsSelling ? "Get Tickets" : "More Info"}
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        ) : (
-          <button
-            type="button"
-            disabled
-            className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm font-bold text-muted-foreground"
-          >
-            <Ticket className="h-4 w-4" />
-            Tickets TBA
-          </button>
-        )}
+        {/* Actions */}
+        <div className="flex gap-2">
+          {ticketUrl ? (
+            <a
+              href={ticketUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleTicketClick}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-neon px-4 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <Ticket className="h-4 w-4" />
+              {ticketsSelling ? t("card.getTickets") : t("card.moreInfo")}
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          ) : (
+            <Link
+              to={detailUrl}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground"
+            >
+              <Ticket className="h-4 w-4" />
+              {t("card.ticketsTba")}
+            </Link>
+          )}
+          <ShareButtons title={`${concert.artist} — ${concert.venue}`} url={shareUrl} compact />
+        </div>
       </div>
 
       {showEdit && (

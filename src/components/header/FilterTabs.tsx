@@ -1,4 +1,5 @@
 import { Sparkles, Music, Laugh, Heart } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { FilterType } from "@/types/concert";
 
 interface FilterTabsProps {
@@ -8,11 +9,12 @@ interface FilterTabsProps {
 }
 
 export function FilterTabs({ filter, onFilterChange, showFavorites }: FilterTabsProps) {
+  const { t } = useTranslation();
   const tabs = [
-    { value: "all" as const, label: "All", icon: Sparkles },
-    { value: "concert" as const, label: "Concerts", icon: Music },
-    { value: "comedy" as const, label: "Comedy", icon: Laugh },
-    ...(showFavorites ? [{ value: "favorites" as const, label: "Favourites", icon: Heart }] : []),
+    { value: "all" as const, label: t("filters.all"), icon: Sparkles },
+    { value: "concert" as const, label: t("filters.concerts"), icon: Music },
+    { value: "comedy" as const, label: t("filters.comedy"), icon: Laugh },
+    ...(showFavorites ? [{ value: "favorites" as const, label: t("filters.favourites"), icon: Heart }] : []),
   ];
 
   return (

@@ -1,5 +1,6 @@
 import { LogOut, LogIn } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 interface AuthButtonProps {
   userEmail?: string;
@@ -8,6 +9,7 @@ interface AuthButtonProps {
 
 export function AuthButton({ userEmail, onSignOut }: AuthButtonProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   if (userEmail) {
     return (
@@ -17,11 +19,11 @@ export function AuthButton({ userEmail, onSignOut }: AuthButtonProps) {
         </span>
         <button
           onClick={onSignOut}
-          aria-label="Sign out"
+          aria-label={t("header.signOut")}
           className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline">Sign out</span>
+          <span className="hidden sm:inline">{t("header.signOut")}</span>
         </button>
       </div>
     );
@@ -33,7 +35,7 @@ export function AuthButton({ userEmail, onSignOut }: AuthButtonProps) {
       className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
     >
       <LogIn className="h-4 w-4" />
-      Sign in
+      {t("header.signIn")}
     </button>
   );
 }

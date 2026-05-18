@@ -22,6 +22,7 @@ export type Database = {
           event_type: string
           id: string
           image_url: string | null
+          slug: string | null
           source: string | null
           source_url: string | null
           ticket_sale_date: string | null
@@ -37,6 +38,7 @@ export type Database = {
           event_type?: string
           id?: string
           image_url?: string | null
+          slug?: string | null
           source?: string | null
           source_url?: string | null
           ticket_sale_date?: string | null
@@ -52,6 +54,7 @@ export type Database = {
           event_type?: string
           id?: string
           image_url?: string | null
+          slug?: string | null
           source?: string | null
           source_url?: string | null
           ticket_sale_date?: string | null
@@ -230,6 +233,10 @@ export type Database = {
     Functions: {
       cleanup_old_concerts: { Args: never; Returns: undefined }
       date_only: { Args: { ts: string }; Returns: string }
+      generate_concert_slug: {
+        Args: { _artist: string; _date: string; _venue: string }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

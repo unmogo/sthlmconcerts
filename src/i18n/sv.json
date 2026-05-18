@@ -1,0 +1,79 @@
+{
+  "header": {
+    "tagline": "Alla kommande föreställningar i Stockholm",
+    "signIn": "Logga in",
+    "signOut": "Logga ut"
+  },
+  "filters": {
+    "all": "Alla",
+    "concerts": "Konserter",
+    "comedy": "Humor",
+    "favourites": "Favoriter"
+  },
+  "home": {
+    "titleAll": "Kommande evenemang",
+    "titleConcerts": "Kommande konserter",
+    "titleComedy": "Kommande humorshower",
+    "titleFavourites": "Kommande favoriter",
+    "subtitleAll": "Alla kommande evenemang i Stockholm",
+    "subtitleConcerts": "Alla kommande konserter i Stockholm",
+    "subtitleComedy": "Alla kommande humorshower i Stockholm",
+    "subtitleFavourites": "Dina sparade konserter",
+    "search": "Sök artist eller plats…",
+    "noResults": "Inga kommande konserter hittades",
+    "noFavourites": "Inga favoriter sparade än",
+    "noFavouritesHint": "Klicka på hjärtat på en konsert för att spara den",
+    "signInToSeeFavourites": "Logga in för att se dina favoriter",
+    "failedToLoad": "Kunde inte ladda konserter"
+  },
+  "card": {
+    "getTickets": "Köp biljetter",
+    "moreInfo": "Mer info",
+    "ticketsTba": "Biljetter kommer",
+    "onSale": "TILL SALU",
+    "soon": "SNART",
+    "tba": "TBA",
+    "ticketsOnSale": "Biljetter släpps",
+    "moreShows": "till · {{count}} shower totalt"
+  },
+  "event": {
+    "back": "Tillbaka till alla evenemang",
+    "share": "Dela",
+    "addToCalendar": "Lägg till i Google Kalender",
+    "getTickets": "Köp biljetter",
+    "linkCopied": "Länk kopierad",
+    "linkCopiedDesc": "Länken har kopierats till urklipp.",
+    "notFound": "Evenemanget hittades inte",
+    "notFoundDesc": "Det här evenemanget kan ha passerat eller tagits bort.",
+    "browseAll": "Bläddra bland alla evenemang"
+  },
+  "auth": {
+    "welcomeBack": "Välkommen tillbaka",
+    "createAccount": "Skapa konto",
+    "resetPassword": "Återställ lösenord",
+    "signInToSave": "Logga in för att spara dina favoritkonserter",
+    "joinToTrack": "Gå med för att följa dina favoriter",
+    "sendResetLink": "Vi skickar dig en återställningslänk",
+    "continueWithGoogle": "Fortsätt med Google",
+    "continueWithApple": "Fortsätt med Apple",
+    "orWithEmail": "eller fortsätt med e-post",
+    "email": "E-post",
+    "password": "Lösenord",
+    "magicLink": "Skicka en magisk länk",
+    "magicLinkSent": "Magisk länk skickad",
+    "magicLinkSentDesc": "Kolla din inkorg för en enkel inloggningslänk.",
+    "signIn": "Logga in",
+    "createAccountBtn": "Skapa konto",
+    "forgotPassword": "Glömt lösenord?",
+    "noAccount": "Har du inget konto?",
+    "haveAccount": "Har du redan ett konto?",
+    "signUp": "Registrera dig",
+    "browseWithout": "Bläddra utan att logga in →",
+    "checkEmail": "Kolla din e-post",
+    "confirmationSent": "Vi skickade en bekräftelselänk.",
+    "resetSent": "Återställningslänk skickad",
+    "resetSentDesc": "Kolla din e-post för en återställningslänk.",
+    "loading": "Laddar...",
+    "errorTitle": "Fel"
+  }
+}
