@@ -20,9 +20,10 @@
     "subtitleComedy": "Alla kommande humorshower i Stockholm",
     "subtitleFavourites": "Dina sparade konserter",
     "search": "Sök artist eller plats…",
-    "noResults": "Inga kommande konserter hittades",
+    "noResults": "Inga kommande evenemang hittades",
+    "noResultsHint": "Klicka på Uppdatera för att hämta de senaste evenemangen",
     "noFavourites": "Inga favoriter sparade än",
-    "noFavouritesHint": "Klicka på hjärtat på en konsert för att spara den",
+    "noFavouritesHint": "Klicka på hjärtat på ett evenemang för att spara det",
     "signInToSeeFavourites": "Logga in för att se dina favoriter",
     "failedToLoad": "Kunde inte ladda konserter"
   },
