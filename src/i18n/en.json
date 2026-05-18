@@ -1,0 +1,79 @@
+{
+  "header": {
+    "tagline": "Every upcoming show in Stockholm",
+    "signIn": "Sign in",
+    "signOut": "Sign out"
+  },
+  "filters": {
+    "all": "All",
+    "concerts": "Concerts",
+    "comedy": "Comedy",
+    "favourites": "Favourites"
+  },
+  "home": {
+    "titleAll": "Upcoming Events",
+    "titleConcerts": "Upcoming Concerts",
+    "titleComedy": "Upcoming Comedy Shows",
+    "titleFavourites": "Upcoming Favourites",
+    "subtitleAll": "All upcoming events in Stockholm",
+    "subtitleConcerts": "All upcoming concerts in Stockholm",
+    "subtitleComedy": "All upcoming comedy shows in Stockholm",
+    "subtitleFavourites": "Your saved concerts",
+    "search": "Search artists or venues…",
+    "noResults": "No upcoming concerts found",
+    "noFavourites": "No favourites saved yet",
+    "noFavouritesHint": "Click the heart on any concert to save it",
+    "signInToSeeFavourites": "Sign in to see your favourites",
+    "failedToLoad": "Failed to load concerts"
+  },
+  "card": {
+    "getTickets": "Get Tickets",
+    "moreInfo": "More Info",
+    "ticketsTba": "Tickets TBA",
+    "onSale": "ON SALE",
+    "soon": "SOON",
+    "tba": "TBA",
+    "ticketsOnSale": "Tickets on sale",
+    "moreShows": "more · {{count}} shows total"
+  },
+  "event": {
+    "back": "Back to all events",
+    "share": "Share",
+    "addToCalendar": "Add to Google Calendar",
+    "getTickets": "Get Tickets",
+    "linkCopied": "Link copied",
+    "linkCopiedDesc": "Event link copied to your clipboard.",
+    "notFound": "Event not found",
+    "notFoundDesc": "This event may have passed or been removed.",
+    "browseAll": "Browse all events"
+  },
+  "auth": {
+    "welcomeBack": "Welcome back",
+    "createAccount": "Create account",
+    "resetPassword": "Reset password",
+    "signInToSave": "Sign in to save your favourite concerts",
+    "joinToTrack": "Join to track your favourites",
+    "sendResetLink": "We'll send you a reset link",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithApple": "Continue with Apple",
+    "orWithEmail": "or continue with email",
+    "email": "Email",
+    "password": "Password",
+    "magicLink": "Send me a magic link",
+    "magicLinkSent": "Magic link sent",
+    "magicLinkSentDesc": "Check your inbox for a one-click sign-in link.",
+    "signIn": "Sign in",
+    "createAccountBtn": "Create account",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?",
+    "signUp": "Sign up",
+    "browseWithout": "Browse without signing in →",
+    "checkEmail": "Check your email",
+    "confirmationSent": "We sent you a confirmation link.",
+    "resetSent": "Reset link sent",
+    "resetSentDesc": "Check your email for a password reset link.",
+    "loading": "Loading...",
+    "errorTitle": "Error"
+  }
+}
