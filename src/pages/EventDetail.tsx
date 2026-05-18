@@ -55,7 +55,7 @@ export default function EventDetail() {
     return (
       <div className="min-h-screen bg-background">
         <Helmet>
-          <title>{t("event.notFound")} | STHLM Concerts</title>
+          <title>{t("event.notFound")} | STHLM Events</title>
           <meta name="robots" content="noindex" />
         </Helmet>
         <div className="container py-24 text-center">
@@ -76,8 +76,8 @@ export default function EventDetail() {
   const image = getDisplayImageUrl(concert.image_url);
   const canonical = eventCanonicalUrl(concert);
   const dateFmt = format(date, "EEEE d MMMM yyyy 'at' HH:mm");
-  const title = `${concert.artist} — ${concert.venue}, ${format(date, "d MMM yyyy")} | STHLM Concerts`;
-  const description = `${concert.artist} live at ${concert.venue} in Stockholm on ${format(date, "EEEE d MMMM yyyy")}. ${concert.event_type === "comedy" ? "Comedy show" : "Concert"}. Find tickets and details on STHLM Concerts.`;
+  const title = `${concert.artist} — ${concert.venue}, ${format(date, "d MMM yyyy")} | STHLM Events`;
+  const description = concert.description?.trim() || `${concert.artist} live at ${concert.venue} in Stockholm on ${format(date, "EEEE d MMMM yyyy")}. ${concert.event_type === "comedy" ? "Comedy show" : "Concert"}. Find tickets and details on STHLM Events.`;
 
   const jsonLd = {
     "@context": "https://schema.org",

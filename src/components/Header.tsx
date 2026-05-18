@@ -97,7 +97,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">
-                STHLM <span className="text-gradient">CONCERTS</span>
+                STHLM <span className="text-gradient">EVENTS</span>
                 <span className="sr-only"> — Every upcoming concert and comedy show in Stockholm</span>
               </h1>
               <p className="text-xs text-muted-foreground">{t("header.tagline")}</p>
