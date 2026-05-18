@@ -19,6 +19,7 @@ export type Database = {
           artist: string
           created_at: string
           date: string
+          description: string | null
           event_type: string
           id: string
           image_url: string | null
@@ -35,6 +36,7 @@ export type Database = {
           artist: string
           created_at?: string
           date: string
+          description?: string | null
           event_type?: string
           id?: string
           image_url?: string | null
@@ -51,6 +53,7 @@ export type Database = {
           artist?: string
           created_at?: string
           date?: string
+          description?: string | null
           event_type?: string
           id?: string
           image_url?: string | null

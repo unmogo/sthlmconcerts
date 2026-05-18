@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { groupConcerts, filterBySearch } from "@/lib/utils/concert-utils";
 
 interface ConcertGridProps {
@@ -26,6 +27,7 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
   const { user } = useAuth();
   const { favoriteIds } = useFavorites();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const grouped = useMemo(() => {
     if (!concerts) return [];
@@ -58,7 +60,7 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
     return (
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2 text-muted-foreground">
         <Music className="h-10 w-10" />
-        <p>Failed to load concerts</p>
+        <p>{t("home.failedToLoad")}</p>
       </div>
     );
   }
@@ -67,12 +69,12 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
     return (
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Heart className="h-12 w-12 text-primary/40" />
-        <p className="text-lg font-medium">Sign in to see your favourites</p>
+        <p className="text-lg font-medium">{t("home.signInToSeeFavourites")}</p>
         <button
           onClick={() => navigate("/auth")}
           className="rounded-lg bg-gradient-neon px-4 py-2 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
         >
-          Sign in
+          {t("header.signIn")}
         </button>
       </div>
     );
@@ -83,10 +85,10 @@ export function ConcertGrid({ selectedIds, onToggleSelect, filter, searchQuery }
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         <Music className="h-12 w-12 text-primary/40" />
         <p className="text-lg font-medium">
-          {filter === "favorites" ? "No favourites saved yet" : "No upcoming concerts found"}
+          {filter === "favorites" ? t("home.noFavourites") : t("home.noResults")}
         </p>
         <p className="text-sm">
-          {filter === "favorites" ? "Click the heart on any concert to save it" : "Click Refresh to scrape the latest events"}
+          {filter === "favorites" ? t("home.noFavouritesHint") : t("home.noResultsHint")}
         </p>
       </div>
     );
