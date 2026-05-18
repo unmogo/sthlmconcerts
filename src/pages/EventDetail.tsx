@@ -225,6 +225,14 @@ export default function EventDetail() {
               </a>
             </div>
 
+            {concert.description && (
+              <div className="mb-6 rounded-lg border border-border bg-card/40 p-4">
+                <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+                  {concert.description}
+                </p>
+              </div>
+            )}
+
             <ShareButtons title={`${concert.artist} — ${concert.venue}`} url={canonical} />
           </div>
         </article>

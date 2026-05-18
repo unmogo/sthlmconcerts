@@ -86,6 +86,7 @@ export const EVENT_DRAFT_SCHEMA = {
           ticket_url: { type: "string", description: "Direct ticket vendor URL if visible; empty otherwise" },
           source_url: { type: "string", description: "Detail page URL on the source site" },
           image_url: { type: "string", description: "Poster image URL if visible" },
+          description: { type: "string", description: "Short 1-3 sentence event blurb from the page (no marketing fluff); empty if none" },
           event_type: { type: "string", enum: ["concert", "comedy", "other"] },
         },
         required: ["artist", "event_type", "source_url"],
@@ -105,5 +106,6 @@ export type EventDraft = {
   ticket_url?: string;
   source_url: string;
   image_url?: string;
+  description?: string;
   event_type: "concert" | "comedy" | "other";
 };

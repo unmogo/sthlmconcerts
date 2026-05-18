@@ -100,6 +100,7 @@ async function runJob(jobId: string) {
         const candidateTicket = normalizeExternalUrl(d.ticket_url, sourceUrl);
         const ticket = isTicketSellerUrl(candidateTicket) ? candidateTicket : null;
         const image = goodImageUrl(d.image_url);
+        const description = (d.description ?? "").trim().slice(0, 1000) || null;
 
         // Upsert by source_url+date as primary dedupe key
         const row = {
@@ -109,6 +110,7 @@ async function runJob(jobId: string) {
           ticket_url: ticket,
           tickets_available: !!ticket,
           image_url: image,
+          description,
           source: src.source_label,
           source_url: sourceUrl,
           event_type: d.event_type,
@@ -117,7 +119,7 @@ async function runJob(jobId: string) {
         // Try update by (source_url, date), else insert.
         const { data: existing } = await sb
           .from("concerts")
-          .select("id, image_url, ticket_url")
+          .select("id, image_url, ticket_url, description")
           .eq("source_url", d.source_url)
           .eq("date", row.date)
           .maybeSingle();
@@ -129,6 +131,7 @@ async function runJob(jobId: string) {
             ticket_url: row.ticket_url ?? existing.ticket_url,
             tickets_available: row.tickets_available || !!existing.ticket_url,
             image_url: row.image_url ?? existing.image_url,
+            description: row.description ?? existing.description,
             event_type: row.event_type,
             source: row.source,
           }).eq("id", existing.id);
