@@ -63,6 +63,8 @@
     "magicLink": "Email me a sign-in link",
     "magicLinkHint": "We'll email a one-click link to the address above — no password needed.",
     "orNoPassword": "or sign in without a password",
+    "usePasswordInstead": "Sign in with a password instead",
+    "useMagicInstead": "Use a magic link instead",
     "magicLinkSent": "Magic link sent",
     "magicLinkSentDesc": "Check your inbox for a one-click sign-in link.",
     "signIn": "Sign in",
