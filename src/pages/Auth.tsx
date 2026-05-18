@@ -261,23 +261,25 @@ export default function Auth() {
 
           </form>
 
-          <div className="mt-5 text-center text-sm text-muted-foreground">
-            {mode === "login" ? (
-              <>
-                {t("auth.noAccount")}{" "}
-                <button onClick={() => setMode("signup")} className="text-primary font-medium hover:underline">
-                  {t("auth.signUp")}
-                </button>
-              </>
-            ) : (
-              <>
-                {t("auth.haveAccount")}{" "}
-                <button onClick={() => setMode("login")} className="text-primary font-medium hover:underline">
-                  {t("auth.signIn")}
-                </button>
-              </>
-            )}
-          </div>
+          {(usePassword || mode !== "login") && (
+            <div className="mt-5 text-center text-sm text-muted-foreground">
+              {mode === "login" ? (
+                <>
+                  {t("auth.noAccount")}{" "}
+                  <button onClick={() => setMode("signup")} className="text-primary font-medium hover:underline">
+                    {t("auth.signUp")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {t("auth.haveAccount")}{" "}
+                  <button onClick={() => { setMode("login"); }} className="text-primary font-medium hover:underline">
+                    {t("auth.signIn")}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="mt-4 pt-4 border-t border-border text-center">
             <button onClick={() => navigate("/")} className="text-xs text-muted-foreground hover:text-foreground">
