@@ -11,6 +11,7 @@ import { eventCanonicalUrl, googleCalendarUrl } from "@/lib/event-links";
 import { ShareButtons } from "@/components/ShareButtons";
 import { Header } from "@/components/Header";
 import { useState } from "react";
+import type { FilterType } from "@/types/concert";
 
 async function fetchConcertBySlug(slug: string): Promise<Concert | null> {
   // Try slug match first
@@ -35,7 +36,7 @@ export default function EventDetail() {
   const { slug = "" } = useParams<{ slug: string }>();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<"all" | "concert" | "comedy" | "favorites">("all");
+  const [filter, setFilter] = useState<FilterType>("all");
   const { data: concert, isLoading } = useQuery({
     queryKey: ["concert", slug],
     queryFn: () => fetchConcertBySlug(slug),
