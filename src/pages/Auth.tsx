@@ -176,7 +176,24 @@ export default function Auth() {
               </div>
             </div>
 
-            {mode !== "forgot" && (
+            {mode === "login" && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleMagicLink}
+                  disabled={magicLoading || !!oauthLoading}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-neon py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {magicLoading ? t("auth.loading") : t("auth.magicLink")}
+                </button>
+                <p className="text-center text-xs text-muted-foreground">
+                  {t("auth.magicLinkHint")}
+                </p>
+              </div>
+            )}
+
+            {mode !== "forgot" && (mode === "signup" || usePassword) && (
               <div>
                 <label htmlFor="auth-password" className="text-sm font-medium text-foreground mb-1.5 block">{t("auth.password")}</label>
                 <div className="relative">
@@ -186,7 +203,7 @@ export default function Auth() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required={mode !== "login" || password.length > 0}
+                    required
                     placeholder="••••••••"
                     className="w-full rounded-lg border border-input bg-background pl-10 pr-10 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
@@ -202,7 +219,7 @@ export default function Auth() {
               </div>
             )}
 
-            {mode === "login" && (
+            {mode === "login" && usePassword && (
               <div className="text-right">
                 <button type="button" onClick={() => setMode("forgot")} className="text-xs text-primary hover:underline">
                   {t("auth.forgotPassword")}
@@ -210,42 +227,38 @@ export default function Auth() {
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading || !!oauthLoading}
-              className="w-full rounded-lg bg-gradient-neon py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {loading
-                ? t("auth.loading")
-                : mode === "login"
-                ? t("auth.signIn")
-                : mode === "signup"
-                ? t("auth.createAccountBtn")
-                : t("auth.sendResetLink").includes("Send") ? "Send reset link" : t("auth.resetPassword")}
-            </button>
+            {(mode !== "login" || usePassword) && (
+              <button
+                type="submit"
+                disabled={loading || !!oauthLoading}
+                className={`w-full rounded-lg py-2.5 text-sm font-bold transition-opacity hover:opacity-90 disabled:opacity-50 ${
+                  mode === "login" && usePassword
+                    ? "border border-border bg-card text-foreground hover:bg-muted"
+                    : "bg-gradient-neon text-primary-foreground"
+                }`}
+              >
+                {loading
+                  ? t("auth.loading")
+                  : mode === "login"
+                  ? t("auth.signIn")
+                  : mode === "signup"
+                  ? t("auth.createAccountBtn")
+                  : t("auth.sendResetLink").includes("Send") ? "Send reset link" : t("auth.resetPassword")}
+              </button>
+            )}
 
             {mode === "login" && (
-              <div className="pt-2">
-                <div className="relative my-3">
-                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">{t("auth.orNoPassword")}</span>
-                  </div>
-                </div>
+              <div className="text-center">
                 <button
                   type="button"
-                  onClick={handleMagicLink}
-                  disabled={magicLoading || !!oauthLoading}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                  onClick={() => setUsePassword(!usePassword)}
+                  className="text-xs text-muted-foreground hover:text-foreground hover:underline"
                 >
-                  <Sparkles className="h-4 w-4" />
-                  {magicLoading ? t("auth.loading") : t("auth.magicLink")}
+                  {usePassword ? t("auth.useMagicInstead") : t("auth.usePasswordInstead")}
                 </button>
-                <p className="mt-2 text-center text-xs text-muted-foreground">
-                  {t("auth.magicLinkHint")}
-                </p>
               </div>
             )}
+
           </form>
 
           <div className="mt-5 text-center text-sm text-muted-foreground">
