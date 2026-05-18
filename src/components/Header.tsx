@@ -5,9 +5,12 @@ import { ScrapeLogDashboard } from "./ScrapeLogDashboard";
 import { FilterTabs } from "./header/FilterTabs";
 import { AdminControls } from "./header/AdminControls";
 import { AuthButton } from "./header/AuthButton";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import type { FilterType } from "@/types/concert";
 
 interface HeaderProps {
@@ -28,6 +31,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, isAdmin, signOut } = useAuth();
+  const { t } = useTranslation();
 
   const handleScrape = async () => {
     setScraping(true);
@@ -41,7 +45,7 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
       });
       setShowLogs(true);
       queryClient.invalidateQueries({ queryKey: ["concerts"] });
-    } catch (err) {
+    } catch {
       toast({
         title: "Scrape failed",
         description: "Could not fetch latest concerts. Try again later.",
@@ -56,17 +60,10 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
     setFetchingImages(true);
     try {
       const result = await triggerFetchImages();
-      toast({
-        title: "Images updated",
-        description: result.message || "Missing images have been fetched.",
-      });
+      toast({ title: "Images updated", description: result.message || "Missing images have been fetched." });
       queryClient.invalidateQueries({ queryKey: ["concerts"] });
     } catch {
-      toast({
-        title: "Image fetch failed",
-        description: "Could not fetch images. Try again later.",
-        variant: "destructive",
-      });
+      toast({ title: "Image fetch failed", description: "Could not fetch images.", variant: "destructive" });
     } finally {
       setFetchingImages(false);
     }
@@ -76,17 +73,10 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
     setResolvingTickets(true);
     try {
       const result = await triggerResolveTickets();
-      toast({
-        title: "Tickets resolved",
-        description: result.message || "Evently links have been replaced with direct ticket URLs.",
-      });
+      toast({ title: "Tickets resolved", description: result.message || "Done." });
       queryClient.invalidateQueries({ queryKey: ["concerts"] });
     } catch {
-      toast({
-        title: "Ticket resolution failed",
-        description: "Could not resolve ticket URLs. Try again later.",
-        variant: "destructive",
-      });
+      toast({ title: "Ticket resolution failed", description: "Try again later.", variant: "destructive" });
     } finally {
       setResolvingTickets(false);
     }
@@ -94,53 +84,51 @@ export function Header({ selectedIds, onDelete, onExport, onAdd, deleting, filte
 
   const handleSignOut = async () => {
     await signOut();
-    toast({ title: "Signed out" });
+    toast({ title: t("header.signOut") });
   };
 
   return (
     <>
-    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
-      <div className="container flex items-center justify-between py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-neon">
-            <Music className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">
-              STHLM <span className="text-gradient">CONCERTS</span>
-              <span className="sr-only"> — Every upcoming concert and comedy show in Stockholm</span>
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Every upcoming show in Stockholm
-            </p>
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
+        <div className="container flex items-center justify-between py-4 gap-4">
+          <Link to="/" className="flex items-center gap-3 shrink-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-neon">
+              <Music className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-foreground">
+                STHLM <span className="text-gradient">CONCERTS</span>
+                <span className="sr-only"> — Every upcoming concert and comedy show in Stockholm</span>
+              </h1>
+              <p className="text-xs text-muted-foreground">{t("header.tagline")}</p>
+            </div>
+          </Link>
+
+          <FilterTabs filter={filter} onFilterChange={onFilterChange} showFavorites={!!user} />
+
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <AdminControls
+                selectedCount={selectedIds.length}
+                onDelete={onDelete}
+                deleting={deleting}
+                onAdd={onAdd}
+                onExport={onExport}
+                onFetchImages={handleFetchImages}
+                fetchingImages={fetchingImages}
+                onResolveTickets={handleResolveTickets}
+                resolvingTickets={resolvingTickets}
+                onShowLogs={() => setShowLogs(true)}
+                onScrape={handleScrape}
+                scraping={scraping}
+              />
+            )}
+            <LanguageSwitcher />
+            <AuthButton userEmail={user?.email} onSignOut={handleSignOut} />
           </div>
         </div>
-
-        <FilterTabs filter={filter} onFilterChange={onFilterChange} showFavorites={!!user} />
-
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <AdminControls
-              selectedCount={selectedIds.length}
-              onDelete={onDelete}
-              deleting={deleting}
-              onAdd={onAdd}
-              onExport={onExport}
-              onFetchImages={handleFetchImages}
-              fetchingImages={fetchingImages}
-              onResolveTickets={handleResolveTickets}
-              resolvingTickets={resolvingTickets}
-              onShowLogs={() => setShowLogs(true)}
-              onScrape={handleScrape}
-              scraping={scraping}
-            />
-          )}
-
-          <AuthButton userEmail={user?.email} onSignOut={handleSignOut} />
-        </div>
-      </div>
-    </header>
-    {showLogs && <ScrapeLogDashboard onClose={() => setShowLogs(false)} />}
+      </header>
+      {showLogs && <ScrapeLogDashboard onClose={() => setShowLogs(false)} />}
     </>
   );
 }

@@ -3,10 +3,13 @@ import { Calendar, MapPin, Ticket, Clock, ExternalLink, Check, Pencil, Heart } f
 import type { Concert } from "@/types/concert";
 import { useState } from "react";
 import { getDisplayImageUrl, getTicketLink, parseLocalDate } from "@/lib/utils/concert-utils";
+import { eventPath } from "@/lib/event-links";
 import { EditConcertDialog } from "./EditConcertDialog";
+import { ShareButtons } from "./ShareButtons";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 interface ConcertCardProps {
   concert: Concert;
