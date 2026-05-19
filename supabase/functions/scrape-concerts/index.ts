@@ -120,7 +120,7 @@ async function runJob(jobId: string) {
         const { data: existing } = await sb
           .from("concerts")
           .select("id, image_url, ticket_url, description")
-          .eq("source_url", d.source_url)
+          .eq("source_url", sourceUrl)
           .eq("date", row.date)
           .maybeSingle();
 
