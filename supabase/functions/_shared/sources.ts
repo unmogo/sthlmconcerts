@@ -13,6 +13,15 @@ export type SourceDef = {
 };
 
 export const SOURCES: SourceDef[] = [
+  // RA first: it's deterministic + cheap (no AI) and historically got cut off by
+  // earlier sources rate-limiting the AI gateway.
+  {
+    name: "ra-stockholm",
+    url: "https://ra.co/events/se/stockholm?page=1",
+    default_event_type: "concert",
+    source_label: "ra.co",
+    waitFor: 2500,
+  },
   {
     name: "evently-music",
     url: "https://evently.se/en/place/se/stockholm?categories=music&page=1",
@@ -54,13 +63,6 @@ export const SOURCES: SourceDef[] = [
     default_event_type: "comedy",
     source_label: "eventim.se",
     waitFor: 2000,
-  },
-  {
-    name: "ra-stockholm",
-    url: "https://ra.co/events/se/stockholm?page=1",
-    default_event_type: "concert",
-    source_label: "ra.co",
-    waitFor: 2500,
   },
 ];
 
