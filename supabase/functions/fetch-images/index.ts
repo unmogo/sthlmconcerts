@@ -115,7 +115,7 @@ function normalizeArtistForLookup(name: string): string {
 async function musicbrainzMbid(artist: string): Promise<string | null> {
   const r = await fetch(
     `https://musicbrainz.org/ws/2/artist/?fmt=json&limit=1&query=${encodeURIComponent(artist)}`,
-    { headers: { "User-Agent": "STHLMConcerts/1.0 (contact: admin@sthlmconcerts.lovable.app)" } },
+    { headers: { "User-Agent": "STHLMConcerts/1.0 (contact: admin@sthlmevents.lovable.app)" } },
   );
   if (!r.ok) return null;
   const d = await r.json();

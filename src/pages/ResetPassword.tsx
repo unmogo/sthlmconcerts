@@ -49,7 +49,7 @@ export default function ResetPassword() {
         <meta name="description" content="Choose a new password for your STHLM Concerts account and get back to tracking concerts in Stockholm." />
         <meta property="og:title" content="Reset Your Password | STHLM Concerts" />
         <meta property="og:description" content="Choose a new password for your STHLM Concerts account." />
-        <link rel="canonical" href="https://sthlmconcerts.lovable.app/reset-password" />
+        <link rel="canonical" href="https://sthlmevents.lovable.app/reset-password" />
         <meta name="robots" content="noindex" />
       </Helmet>
       <div className="w-full max-w-md">

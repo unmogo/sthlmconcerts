@@ -3,7 +3,7 @@
 import { writeFileSync } from "fs";
 import { resolve } from "path";
 
-const BASE_URL = "https://sthlmconcerts.lovable.app";
+const BASE_URL = "https://sthlmevents.lovable.app";
 const SUPABASE_URL = "https://bdbvyayxzlyxjzeiyfwh.supabase.co";
 const ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkYnZ5YXl4emx5eGp6ZWl5ZndoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDI1NTMsImV4cCI6MjA4NjMxODU1M30.t-YZy9KfEanYCfnGcTMD8MxG0386ztOrt7lqfTSoLLw";

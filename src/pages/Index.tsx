@@ -60,9 +60,9 @@ const Index = () => {
         <html lang={lang} />
         <title>{`${t(titleKey)} — STHLM Concerts`}</title>
         <meta name="description" content={t(subKey)} />
-        <link rel="canonical" href="https://sthlmconcerts.lovable.app/" />
-        <link rel="alternate" hrefLang="en" href="https://sthlmconcerts.lovable.app/" />
-        <link rel="alternate" hrefLang="sv" href="https://sthlmconcerts.lovable.app/" />
+        <link rel="canonical" href="https://sthlmevents.lovable.app/" />
+        <link rel="alternate" hrefLang="en" href="https://sthlmevents.lovable.app/" />
+        <link rel="alternate" hrefLang="sv" href="https://sthlmevents.lovable.app/" />
       </Helmet>
       <Header
         selectedIds={selectedIds}

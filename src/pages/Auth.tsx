@@ -109,7 +109,7 @@ export default function Auth() {
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content="Sign in to STHLM Concerts to save favourite shows in Stockholm." />
-        <link rel="canonical" href="https://sthlmconcerts.lovable.app/auth" />
+        <link rel="canonical" href="https://sthlmevents.lovable.app/auth" />
       </Helmet>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
