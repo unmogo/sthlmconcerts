@@ -13,4 +13,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://sthlmconcerts.lovable.app/sitemap.xml
+Sitemap: https://sthlmevents.lovable.app/sitemap.xml

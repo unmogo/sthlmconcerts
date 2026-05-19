@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import type { Concert } from "@/types/concert";
 import { parseLocalDate } from "@/lib/utils/concert-utils";
 
-export const SITE_URL = "https://sthlmconcerts.lovable.app";
+export const SITE_URL = "https://sthlmevents.lovable.app";
 
 export function eventPath(concert: Pick<Concert, "id" | "slug">): string {
   return `/event/${concert.slug ?? concert.id}`;

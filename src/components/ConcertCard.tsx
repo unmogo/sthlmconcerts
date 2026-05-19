@@ -29,7 +29,7 @@ export function ConcertCard({ concert, extraDates = [], index, selected, onToggl
   const { t } = useTranslation();
   const ticketUrl = getTicketLink(concert.ticket_url, concert.source_url);
   const detailUrl = eventPath(concert);
-  const shareUrl = `${typeof window !== "undefined" ? window.location.origin : "https://sthlmconcerts.lovable.app"}${detailUrl}`;
+  const shareUrl = `${typeof window !== "undefined" ? window.location.origin : "https://sthlmevents.lovable.app"}${detailUrl}`;
 
   const concertDate = parseLocalDate(concert.date);
   const saleDate = concert.ticket_sale_date ? parseLocalDate(concert.ticket_sale_date) : null;
