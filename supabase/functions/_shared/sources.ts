@@ -13,6 +13,15 @@ export type SourceDef = {
 };
 
 export const SOURCES: SourceDef[] = [
+  // RA first: it's deterministic + cheap (no AI) and historically got cut off by
+  // earlier sources rate-limiting the AI gateway.
+  {
+    name: "ra-stockholm",
+    url: "https://ra.co/events/se/stockholm?page=1",
+    default_event_type: "concert",
+    source_label: "ra.co",
+    waitFor: 2500,
+  },
   {
     name: "evently-music",
     url: "https://evently.se/en/place/se/stockholm?categories=music&page=1",
@@ -55,13 +64,6 @@ export const SOURCES: SourceDef[] = [
     source_label: "eventim.se",
     waitFor: 2000,
   },
-  {
-    name: "ra-stockholm",
-    url: "https://ra.co/events/se/stockholm?page=1",
-    default_event_type: "concert",
-    source_label: "ra.co",
-    waitFor: 2500,
-  },
 ];
 
 const MONTHS: Record<string, string> = {
@@ -87,7 +89,7 @@ export async function fetchSource(
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
   if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md);
-  if (src.name === "ra-stockholm") return fetchRaStockholm(ai, src, md);
+  if (src.name === "ra-stockholm") return fetchRaStockholm(src, md);
   // Cap markdown to keep AI context small
   const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
 
@@ -179,38 +181,25 @@ function parseEventimDate(lines: string[]): string | null {
   return null;
 }
 
-// RA (Resident Advisor) auto-paginates listing. Probe page=1..N until "No results found"
-// or the page returns no event links, then ingest every page up to the last valid one.
-async function fetchRaStockholm(ai: AiClient, src: SourceDef, firstPageMd: string): Promise<EventDraft[]> {
+// RA (Resident Advisor) listing pages are highly structured — parse the markdown
+// directly instead of paying an AI roundtrip per page. Paginate until the page
+// shows "No results found" or contains no event links.
+async function fetchRaStockholm(src: SourceDef, firstPageMd: string): Promise<EventDraft[]> {
   const baseUrl = "https://ra.co/events/se/stockholm";
+  const seen = new Set<string>();
   const out: EventDraft[] = [];
   let page = 1;
   let md = firstPageMd;
 
-  while (page <= 10) {
-    const isEmpty = /no results found/i.test(md) || !/\]\(https:\/\/ra\.co\/events\/\d+/.test(md);
-    if (isEmpty) break;
+  while (page <= 15) {
+    const hasResults = !/no results found/i.test(md)
+      && /\]\(https:\/\/ra\.co\/events\/\d+/.test(md);
+    if (!hasResults) break;
 
-    const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
-    try {
-      const parsed = await ai.json<{ events: EventDraft[] }>({
-        system: SYSTEM,
-        user: `Source: ra.co (Stockholm page ${page})\nDefault event_type: concert\n\n--- PAGE MARKDOWN ---\n${trimmed}`,
-        schema: EVENT_DRAFT_SCHEMA,
-        name: "extract_events",
-      });
-      for (const e of parsed.events ?? []) {
-        if (!e.artist || !e.source_url) continue;
-        out.push({
-          ...e,
-          event_type: e.event_type === "comedy" ? "comedy" : "concert",
-          source_url: e.source_url.startsWith("http")
-            ? e.source_url
-            : new URL(e.source_url, baseUrl).toString(),
-        });
-      }
-    } catch {
-      // Skip page on AI failure; try next.
+    for (const draft of parseRaListingMarkdown(md)) {
+      if (seen.has(draft.source_url)) continue;
+      seen.add(draft.source_url);
+      out.push(draft);
     }
 
     page++;
@@ -220,7 +209,86 @@ async function fetchRaStockholm(ai: AiClient, src: SourceDef, firstPageMd: strin
     } catch {
       break;
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 400));
   }
   return out;
 }
+
+// RA listings group events under "### <Weekday>, <Day> <Month>" headings, each
+// followed by event blocks with "### [Title](https://ra.co/events/ID)" and a
+// "Location" line. Times aren't on the listing — default to 22:00 local for club
+// nights so the date sorts correctly without misleading minute-level precision.
+function parseRaListingMarkdown(md: string): EventDraft[] {
+  const lines = md.split("\n");
+  const drafts: EventDraft[] = [];
+  let currentDate: { y: number; m: number; d: number } | null = null;
+  const today = new Date();
+  const thisYear = today.getUTCFullYear();
+  const thisMonth = today.getUTCMonth() + 1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    const dateMatch = line.match(
+      /###\s*\S*\s*(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,\s*(\d{1,2})\s+([A-Za-z]+)/i,
+    );
+    if (dateMatch) {
+      const day = Number(dateMatch[1]);
+      const monthName = dateMatch[2].toLowerCase().slice(0, 3);
+      const monthMap: Record<string, number> = {
+        jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+        jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+      };
+      const month = monthMap[monthName];
+      if (!month) continue;
+      const year = month < thisMonth ? thisYear + 1 : thisYear;
+      currentDate = { y: year, m: month, d: day };
+      continue;
+    }
+
+    const eventMatch = line.match(
+      /###\s+\[([^\]]+)\]\((https:\/\/ra\.co\/events\/\d+)\)/,
+    );
+    if (!eventMatch || !currentDate) continue;
+
+    const title = eventMatch[1].trim();
+    const sourceUrl = eventMatch[2];
+
+    // Look ahead for the venue / location label.
+    let venueRaw = "";
+    for (let j = i + 1; j < Math.min(i + 30, lines.length); j++) {
+      if (/###\s+\[/.test(lines[j])) break;
+      if (/^\s*Location\s*$/.test(lines[j])) {
+        for (let k = j + 1; k < Math.min(j + 8, lines.length); k++) {
+          const t = lines[k].trim();
+          if (!t) continue;
+          const vmatch = t.match(/^\[([^\]]+)\]\(https:\/\/ra\.co\/clubs\//);
+          if (vmatch) venueRaw = vmatch[1].trim();
+          else if (!/^TBA/i.test(t)) venueRaw = t.replace(/^[-*]\s*/, "").trim();
+          break;
+        }
+        break;
+      }
+    }
+
+    if (!venueRaw) continue; // Skips TBA-only entries — invalid venue rule would drop them anyway.
+
+    const iso = `${currentDate.y}-${String(currentDate.m).padStart(2, "0")}-${String(
+      currentDate.d,
+    ).padStart(2, "0")}T22:00:00${currentDate.m >= 4 && currentDate.m <= 10 ? "+02:00" : "+01:00"}`;
+
+    drafts.push({
+      artist: title,
+      venue_raw: venueRaw,
+      address_raw: "Stockholm",
+      date_iso: iso,
+      ticket_url: sourceUrl,
+      source_url: sourceUrl,
+      image_url: "",
+      event_type: "concert",
+    });
+  }
+
+  return drafts;
+}
+
