@@ -211,7 +211,52 @@ async function fetchRaStockholm(src: SourceDef, firstPageMd: string): Promise<Ev
     }
     await new Promise((r) => setTimeout(r, 400));
   }
+
+  // Enrich up to N events with image + description from their detail page.
+  // Cap to keep Firecrawl spend predictable; prioritize events that don't yet
+  // have an image (all of them, on a fresh parse).
+  const ENRICH_LIMIT = 30;
+  const toEnrich = out.slice(0, ENRICH_LIMIT);
+  for (const draft of toEnrich) {
+    try {
+      const detailMd = await scrapeMarkdown(draft.source_url, { waitFor: 1500 });
+      const enriched = extractRaDetail(detailMd);
+      if (enriched.image) draft.image_url = enriched.image;
+      if (enriched.description) draft.description = enriched.description;
+      await new Promise((r) => setTimeout(r, 300));
+    } catch {
+      // Best-effort enrichment; keep going.
+    }
+  }
+
   return out;
+}
+
+// Pulls the flyer image and short description from an RA event detail page.
+function extractRaDetail(md: string): { image: string; description: string } {
+  const imgMatch = md.match(
+    /!\[[^\]]*\]\((https:\/\/imgproxy\.ra\.co\/[^)\s]+)\)/,
+  );
+  const image = imgMatch?.[1] ?? "";
+
+  let description = "";
+  const lines = md.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    // Descriptions usually appear as "- ❥ ..." or as the first prose block
+    // after the Genres section.
+    const m = lines[i].match(/^-\s*❥\s*(.+)/);
+    if (m) {
+      const collected = [m[1]];
+      for (let j = i + 1; j < Math.min(i + 12, lines.length); j++) {
+        const t = lines[j].trim();
+        if (!t || /^[+-]?\d/.test(t) || t.startsWith("-") || t.startsWith("##")) break;
+        collected.push(t);
+      }
+      description = collected.join(" ").trim();
+      break;
+    }
+  }
+  return { image, description: description.slice(0, 1000) };
 }
 
 // RA listings group events under "### <Weekday>, <Day> <Month>" headings, each
