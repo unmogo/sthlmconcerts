@@ -89,7 +89,7 @@ export async function fetchSource(
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
   if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md);
-  if (src.name === "ra-stockholm") return fetchRaStockholm(ai, src, md);
+  if (src.name === "ra-stockholm") return fetchRaStockholm(src, md);
   // Cap markdown to keep AI context small
   const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
 
