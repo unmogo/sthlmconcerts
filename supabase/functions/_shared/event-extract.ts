@@ -266,3 +266,51 @@ export function extractJsonLd(html: string): unknown[] {
   }
   return out;
 }
+
+export type JsonLdEvent = {
+  type: string;
+  name: string;
+  startDate: string;
+  venue: string;
+  locality: string;
+  image: string | null;
+  offerUrl: string | null;
+  description: string;
+};
+
+// Most modern ticketing/venue/aggregator pages ship schema.org Event data.
+// Parsing it deterministically is faster, cheaper and far more accurate than
+// asking a model to read a markdown dump.
+export function parseJsonLdEvents(html: string, baseUrl: string): JsonLdEvent[] {
+  const out: JsonLdEvent[] = [];
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (!node || typeof node !== "object") return;
+    const o = node as Record<string, unknown>;
+    if (Array.isArray(o["@graph"])) walk(o["@graph"]);
+    const type = String(Array.isArray(o["@type"]) ? o["@type"][0] : o["@type"] ?? "");
+    if (!/Event$/i.test(type) && type !== "Festival") return;
+    const loc = (o.location ?? {}) as Record<string, unknown>;
+    const address = (loc.address ?? {}) as Record<string, unknown>;
+    const img = o.image;
+    const rawImage = typeof img === "string"
+      ? img
+      : Array.isArray(img)
+        ? (typeof img[0] === "string" ? img[0] : String((img[0] as Record<string, unknown>)?.url ?? ""))
+        : String((img as Record<string, unknown>)?.url ?? "");
+    const offers = Array.isArray(o.offers) ? o.offers[0] : o.offers;
+    const offerUrl = normalizeExternalUrl(String((offers as Record<string, unknown>)?.url ?? ""), baseUrl);
+    out.push({
+      type,
+      name: stripTags(String(o.name ?? "")),
+      startDate: String(o.startDate ?? ""),
+      venue: stripTags(String(loc.name ?? "")),
+      locality: stripTags(String(address.addressLocality ?? "")),
+      image: goodImageUrl(rawImage ? absoluteUrl(rawImage, baseUrl) : null),
+      offerUrl,
+      description: stripTags(String(o.description ?? "")).slice(0, 1000),
+    });
+  };
+  for (const parsed of extractJsonLd(html)) walk(parsed);
+  return out;
+}
