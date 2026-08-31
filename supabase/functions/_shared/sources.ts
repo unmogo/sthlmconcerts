@@ -406,22 +406,71 @@ const NON_MUSIC_JSONLD_TYPES = [
 // LiveSpot
 // ---------------------------------------------------------------------------
 
-// LiveSpot's category page is server-rendered, and its React Router data
-// endpoint (`<path>.data?page=N`) paginates through the full Stockholm list.
-// Every event page carries schema.org data with the real seller URL in
-// `offers.url` and the poster in `image.url`, so we never have to guess.
+// LiveSpot's category pages only server-render the first 12 of 1500+ Stockholm
+// events (the rest loads client-side), which is why most of the catalogue was
+// invisible before. Discovery therefore runs off their sitemap, filtered to
+// Stockholm-region slugs, and every event page is read for its schema.org data:
+// `offers.url` is the real seller (AXS/Ticketmaster/Tickster) and `image.url`
+// the poster, so nothing has to be guessed.
+const STHLM_SLUG_CITIES = [
+  "stockholm", "solna", "sundbyberg", "johanneshov", "nacka", "sodermalm", "hagersten",
+  "farsta", "bromma", "kista", "taby", "danderyd", "lidingo", "akersberga", "huddinge",
+  "skarholmen", "alvsjo", "sollentuna", "vaxholm", "tumba", "handen", "jarfalla",
+  "upplands-vasby", "varmdo", "saltsjo-boo", "djurgarden", "hammarby-sjostad", "bandhagen",
+  "enskede", "vallingby", "spanga", "skarpnack", "hasselby", "arsta", "liljeholmen",
+];
+const STHLM_SLUG_RE = new RegExp(`-(${STHLM_SLUG_CITIES.join("|")})-[0-9a-f]{8}$`);
+
+// Breadcrumb category is the only reliable category signal: LiveSpot types plenty
+// of stand-up as TheaterEvent/Event, and plenty of concerts carry no Event type.
+const CATEGORY_MAP: Record<string, "concert" | "comedy"> = {
+  konsert: "concert",
+  festival: "concert",
+  humor: "comedy",
+  standup: "comedy",
+  "stand-up": "comedy",
+};
+
+function livespotCategory(html: string): "concert" | "comedy" | null {
+  for (const block of extractJsonLdBlocks(html)) {
+    if (block?.["@type"] !== "BreadcrumbList") continue;
+    const items = (block.itemListElement ?? []) as Array<{ name?: string }>;
+    for (const item of items) {
+      const key = (item?.name ?? "").trim().toLowerCase();
+      if (CATEGORY_MAP[key]) return CATEGORY_MAP[key];
+    }
+  }
+  return null;
+}
+
 async function fetchLivespot(src: SourceDef, deadline: number): Promise<EventDraft[]> {
-  const slugs = await harvestLivespotSlugs(src.url, deadline);
+  const slugs = await harvestLivespotSlugs(deadline);
   if (!slugs.length) return [];
 
-  const drafts = await mapPool(slugs, 6, deadline - 20_000, async (slug) => {
+  // Plain fetches against a fast CDN: 12 in flight clears ~1500 pages inside the
+  // per-source budget, and mapPool abandons the tail if the deadline nears.
+  return await mapPool(slugs, 12, deadline - 15_000, async (slug) => {
     const url = `https://livespot.se/event/${slug}`;
-    const html = await getHtml(url);
+    const html = await getHtml(url, 12_000);
     if (!html) return null;
+
+    const category = livespotCategory(html);
     const events = parseJsonLdEvents(html, url);
     const event = events.find((e) => e.startDate && e.venue);
     if (!event) return null;
-    if (NON_MUSIC_JSONLD_TYPES.includes(event.type)) return null;
+
+    // Category wins; without one, fall back to the schema.org type.
+    let eventType: "concert" | "comedy";
+    if (category) {
+      eventType = category;
+    } else if (event.type === "ComedyEvent") {
+      eventType = "comedy";
+    } else if (event.type === "MusicEvent" || event.type === "Festival") {
+      eventType = "concert";
+    } else {
+      return null; // theatre, dance, sport, kids, musicals — out of scope
+    }
+    if (!category && NON_MUSIC_JSONLD_TYPES.includes(event.type)) return null;
     if (event.locality && !/stockholm/i.test(event.locality)) return null;
 
     const ticket = isUsableTicketUrl(event.offerUrl) ? event.offerUrl! : "";
@@ -438,39 +487,29 @@ async function fetchLivespot(src: SourceDef, deadline: number): Promise<EventDra
       source_url: url,
       image_url: image,
       description: event.description,
-      event_type: event.type === "ComedyEvent" ? "comedy" : src.default_event_type,
+      event_type: eventType,
     };
     return draft.artist ? draft : null;
   });
-
-  return drafts;
 }
 
-async function harvestLivespotSlugs(listingUrl: string, deadline: number): Promise<string[]> {
+async function harvestLivespotSlugs(deadline: number): Promise<string[]> {
   const slugs = new Set<string>();
-  const collect = (text: string) => {
-    let added = 0;
-    for (const m of text.matchAll(/([a-z0-9]+(?:-[a-z0-9]+){1,12}-[0-9a-f]{8})(?![0-9a-f])/g)) {
+  for (let i = 1; i <= 12 && Date.now() < deadline - 30_000; i++) {
+    const xml = await getHtml(`https://livespot.se/sitemap-events-${i}.xml`, 20_000);
+    if (!xml) break;
+    let matched = 0;
+    for (const m of xml.matchAll(/<loc>https:\/\/livespot\.se\/event\/([^<]+)<\/loc>/g)) {
       const slug = m[1];
-      // Reject UUID fragments: a real slug has at least one segment with a
-      // letter outside the hex alphabet.
-      if (!/[g-z]/.test(slug.slice(0, -9))) continue;
-      if (!slugs.has(slug)) { slugs.add(slug); added++; }
+      if (!STHLM_SLUG_RE.test(slug)) continue;
+      slugs.add(slug);
+      matched++;
     }
-    return added;
-  };
-
-  collect(await getHtml(listingUrl));
-
-  let emptyPages = 0;
-  for (let page = 1; page <= 60 && Date.now() < deadline - 60_000; page++) {
-    const text = await getHtml(`${listingUrl}.data?page=${page}`, 15_000);
-    if (!text) { emptyPages++; } else { emptyPages = collect(text) > 0 ? 0 : emptyPages + 1; }
-    if (emptyPages >= 3) break;
+    if (matched === 0 && i > 1) break;
   }
-
   return [...slugs];
 }
+
 
 // ---------------------------------------------------------------------------
 // Cirkus (venue site)
