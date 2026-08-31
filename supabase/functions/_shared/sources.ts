@@ -36,18 +36,15 @@ export const SOURCES: SourceDef[] = [
     source_label: "evently.se",
     waitFor: 1500,
   },
+  // One LiveSpot source covers both concerts and comedy: discovery runs off its
+  // sitemap (the category pages only render the first 12 of 1500+ events).
   {
-    name: "livespot-konsert",
-    url: "https://livespot.se/evenemang/stockholm/konsert",
+    name: "livespot-stockholm",
+    url: "https://livespot.se/",
     default_event_type: "concert",
     source_label: "livespot.se",
   },
-  {
-    name: "livespot-humor",
-    url: "https://livespot.se/evenemang/stockholm/humor",
-    default_event_type: "comedy",
-    source_label: "livespot.se",
-  },
+
   {
     name: "cirkus",
     url: "https://cirkus.se/sv/evenemang/",
