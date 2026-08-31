@@ -82,14 +82,17 @@ const SYSTEM = [
   "Do not invent venues or dates. Empty string for unknown fields.",
 ].join(" ");
 
+// `deadline` is an absolute epoch-ms budget: every multi-page loop checks it and
+// returns what it has instead of running until the edge runtime kills the job.
 export async function fetchSource(
   ai: AiClient,
   src: SourceDef,
+  deadline: number = Date.now() + 200_000,
 ): Promise<EventDraft[]> {
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
-  if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md);
-  if (src.name === "ra-stockholm") return fetchRaStockholm(src, md);
+  if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md, deadline);
+  if (src.name === "ra-stockholm") return fetchRaStockholm(src, md, deadline);
   // Cap markdown to keep AI context small
   const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
 
@@ -113,24 +116,26 @@ export async function fetchSource(
     }));
 }
 
-async function fetchEventimStockholm(src: SourceDef, cityMarkdown: string): Promise<EventDraft[]> {
+async function fetchEventimStockholm(src: SourceDef, cityMarkdown: string, deadline: number): Promise<EventDraft[]> {
   const links = Array.from(cityMarkdown.matchAll(/\]\((https:\/\/www\.eventim\.se\/(?:artist|eventseries)\/[^)\s"]+)/g))
     .map((m) => m[1])
     .filter((url, i, arr) => arr.indexOf(url) === i)
-    .slice(0, 35);
+    .slice(0, 60);
 
   const out: EventDraft[] = [];
   for (const link of links) {
+    if (Date.now() > deadline) break;
     try {
-      const artistMarkdown = await scrapeMarkdown(link, { waitFor: 1200 });
+      const artistMarkdown = await scrapeMarkdown(link, { waitFor: 1200, timeoutMs: 25_000 });
       out.push(...extractEventimArtistEvents(artistMarkdown, link, src.default_event_type));
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 150));
     } catch {
       // Keep the scraper moving if one Eventim artist page fails.
     }
   }
   return out;
 }
+
 
 function extractEventimArtistEvents(md: string, artistPageUrl: string, eventType: "concert" | "comedy"): EventDraft[] {
   const lines = md.split("\n").map((line) => line.trim()).filter(Boolean);
