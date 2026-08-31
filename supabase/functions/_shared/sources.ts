@@ -2,7 +2,7 @@
 // Listing pages → markdown → AI structured extraction.
 import { scrapeHtml, scrapeMarkdown } from "./firecrawl.ts";
 import { AiClient, EVENT_DRAFT_SCHEMA, type EventDraft } from "./ai.ts";
-import { extractMetaContent, extractTicketUrlFromHtml, goodImageUrl, isUsableTicketUrl, normalizeExternalUrl, parseJsonLdEvents, stripTags } from "./event-extract.ts";
+import { extractJsonLd, extractMetaContent, extractTicketUrlFromHtml, goodImageUrl, isUsableTicketUrl, normalizeExternalUrl, parseJsonLdEvents, stripTags } from "./event-extract.ts";
 
 export type SourceDef = {
   name: string;
@@ -94,7 +94,7 @@ export async function fetchSource(
 ): Promise<EventDraft[]> {
   // LiveSpot is server-rendered with full schema.org data on every event page —
   // no Firecrawl, no AI, and it yields the real seller link + poster.
-  if (src.name.startsWith("livespot-")) return fetchLivespot(src, deadline);
+  if (src.name.startsWith("livespot")) return fetchLivespot(src, deadline);
   if (src.name === "cirkus") return fetchCirkus(src, deadline);
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
@@ -432,7 +432,7 @@ const CATEGORY_MAP: Record<string, "concert" | "comedy"> = {
 };
 
 function livespotCategory(html: string): "concert" | "comedy" | null {
-  for (const block of extractJsonLdBlocks(html)) {
+  for (const block of extractJsonLd(html) as Array<Record<string, unknown>>) {
     if (block?.["@type"] !== "BreadcrumbList") continue;
     const items = (block.itemListElement ?? []) as Array<{ name?: string }>;
     for (const item of items) {
