@@ -78,6 +78,36 @@ export function isTicketSellerUrl(url: string | null | undefined): boolean {
   }
 }
 
+// Aggregators are great discovery surfaces but must never be the final ticket
+// destination (they are competitors and their pages are not checkout pages).
+const AGGREGATOR_HOSTS = [
+  "evently.se", "livespot.se", "evenemangskollen.se", "songkick.com", "bandsintown.com",
+];
+
+export function isAggregatorUrl(url: string | null | undefined): boolean {
+  const normalized = normalizeExternalUrl(url);
+  if (!normalized) return false;
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    return AGGREGATOR_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+// A ticket URL is usable when it points off-aggregator: either a known seller
+// (tickster, ticketmaster, axs, …) or the venue's own booking page. Restricting
+// to the seller allowlist was why perfectly good LiveSpot/venue links were
+// dropped and the event ended up marked TBA.
+export function isUsableTicketUrl(url: string | null | undefined): boolean {
+  const normalized = normalizeExternalUrl(url);
+  if (!normalized) return false;
+  if (isAggregatorUrl(normalized)) return false;
+  return /^https?:\/\//i.test(normalized);
+}
+
+
+
 export function extractTicketUrl(rawUrl: string): string | null {
   const decodedInput = decodeMaybe(rawUrl);
   if (!decodedInput || /^(https?:?)$/i.test(decodedInput.trim())) return null;
