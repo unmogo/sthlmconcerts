@@ -58,6 +58,9 @@ export function normalizeExternalUrl(rawUrl: string | null | undefined, baseUrl?
     const parsed = baseUrl ? new URL(raw, baseUrl) : new URL(raw);
     if (!["http:", "https:"].includes(parsed.protocol)) return null;
     const host = parsed.hostname.toLowerCase();
+    // Reject hosts that came out of a broken string rewrite (e.g. "\\g<1>800.webp")
+    // or that simply aren't valid domains.
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) return null;
     if (BLOCKED_APP_HOSTS.some((blocked) => host.includes(blocked))) return null;
     return parsed.toString();
   } catch {

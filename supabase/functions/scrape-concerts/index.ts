@@ -38,6 +38,22 @@ function bearer(req: Request): string | null {
   return auth?.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
+// Aggregator listings (livespot, evently) sometimes bleed in other cities via
+// "related events" blocks. Reject anything that clearly names another Swedish city.
+const OTHER_CITIES = [
+  "goteborg", "göteborg", "gothenburg", "malmo", "malmö", "uppsala", "linkoping",
+  "linköping", "orebro", "örebro", "vasteras", "västerås", "helsingborg", "norrkoping",
+  "norrköping", "jonkoping", "jönköping", "umea", "umeå", "lund", "gavle", "gävle",
+  "sundsvall", "karlstad", "vaxjo", "växjö", "copenhagen", "kobenhavn", "oslo", "helsinki",
+];
+
+function isNonStockholm(sourceUrl: string, venueRaw?: string, addressRaw?: string): boolean {
+  const haystack = `${sourceUrl} ${venueRaw ?? ""} ${addressRaw ?? ""}`.toLowerCase();
+  if (/stockholm|sthlm/.test(haystack)) return false;
+  return OTHER_CITIES.some((city) => haystack.includes(city));
+}
+
+
 async function authedAdminUserId(req: Request): Promise<string | null> {
   const token = bearer(req);
   if (!token) return null;
@@ -148,6 +164,7 @@ async function runSource(jobId: string, index: number) {
 
       const sourceUrl = normalizeExternalUrl(d.source_url);
       if (!sourceUrl) continue;
+      if (isNonStockholm(sourceUrl, d.venue_raw, d.address_raw)) continue;
       const candidateTicket = normalizeExternalUrl(d.ticket_url, sourceUrl);
       const ticket = isTicketSellerUrl(candidateTicket) ? candidateTicket : null;
       const image = goodImageUrl(d.image_url);
@@ -158,13 +175,17 @@ async function runSource(jobId: string, index: number) {
         venue: venue!,
         date: date.toISOString(),
         ticket_url: ticket,
-        tickets_available: !!ticket,
+        // Any working outbound link (seller or the source's own event page)
+        // means the event is bookable. TBA is reserved for events with no link
+        // at all or a future ticket_sale_date.
+        tickets_available: true,
         image_url: image,
         description,
         source: src.source_label,
         source_url: sourceUrl,
         event_type: d.event_type,
       };
+
 
       const { data: existing } = await sb
         .from("concerts")
@@ -178,7 +199,9 @@ async function runSource(jobId: string, index: number) {
           artist: row.artist,
           venue: row.venue,
           ticket_url: row.ticket_url ?? existing.ticket_url,
-          tickets_available: row.tickets_available || !!existing.ticket_url,
+          tickets_available: true,
+
+
           image_url: row.image_url ?? existing.image_url,
           description: row.description ?? existing.description,
           event_type: row.event_type,
