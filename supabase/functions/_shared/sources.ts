@@ -38,16 +38,21 @@ export const SOURCES: SourceDef[] = [
   },
   {
     name: "livespot-konsert",
-    url: "https://livespot.se/?city=stockholm&category=konsert",
+    url: "https://livespot.se/evenemang/stockholm/konsert",
     default_event_type: "concert",
     source_label: "livespot.se",
-    waitFor: 2000,
   },
   {
     name: "livespot-humor",
-    url: "https://livespot.se/?city=stockholm&category=humor",
+    url: "https://livespot.se/evenemang/stockholm/humor",
     default_event_type: "comedy",
     source_label: "livespot.se",
+  },
+  {
+    name: "cirkus",
+    url: "https://cirkus.se/sv/evenemang/",
+    default_event_type: "concert",
+    source_label: "cirkus.se",
     waitFor: 2000,
   },
   {
@@ -64,6 +69,7 @@ export const SOURCES: SourceDef[] = [
     source_label: "eventim.se",
     waitFor: 2000,
   },
+
 ];
 
 const MONTHS: Record<string, string> = {
