@@ -11,6 +11,12 @@
     <priority>0.3</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/dj-s-pa-sergels-torg-kulturhuset-stadsteatern-2026-09-01-6cbc9f</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/live-sessions-thomas-stenstrom-01-sep-tradgarden-2026-09-01-3551c1</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
@@ -54,6 +60,12 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/slutspelat-ett-komiskt-sorgearbete-hotel-rival-2026-09-03-7448f3</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/lovet-grona-lund-2026-09-04-c3d288</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -65,14 +77,14 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/lovet-grona-lund-2026-09-04-c3d288</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/slutspelat-ett-komiskt-sorgearbete-hotel-rival-2026-09-04-9048f0</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/slutspelat-ett-komiskt-sorgearbete-hotel-rival-2026-09-04-9048f0</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/artbat-stockholm-forbindelsehallen-2026-09-04-cade57</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -89,12 +101,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/artbat-stockholm-forbindelsehallen-2026-09-04-cade57</loc>
-    <lastmod>2026-08-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/norra-brunn-simon-gardenfors-johannes-brenning-petrina-solange-norra-brunn-stockholm-2026-09-04-804a53</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
@@ -102,12 +108,6 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/slutspelat-ett-komiskt-sorgearbete-hotel-rival-2026-09-05-d1e33a</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/fatuma-norah-tradgarden-2026-09-05-b634dd</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -125,6 +125,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/fatuma-norah-tradgarden-2026-09-05-b634dd</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/the-weeknd-strawberry-arena-2026-09-08-9db254</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
@@ -132,19 +138,19 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/fear-factory-fryshuset-2026-09-08-a86f87</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/medborgare-nujen-hotel-rival-2026-09-08-050131</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/the-waterboys-fisherman-s-blues-revue-featuring-steve-earle-filadelfia-convention-center-2026-09-08-d4bb6b</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -168,7 +174,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/medborgare-nujen-hotel-rival-2026-09-09-229116</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -185,25 +191,19 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/cockney-rejects-studion-2026-09-10-9dba2b</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/markus-krunegard-grona-lund-2026-09-10-4146a4</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/cockney-rejects-studion-2026-09-11-f30b96</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/cockney-rejects-studion-2026-09-10-9dba2b</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/hooja-grona-lund-2026-09-11-90f7aa</loc>
+    <loc>https://sthlmevents.lovable.app/event/cockney-rejects-studion-2026-09-11-f30b96</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -215,8 +215,14 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/vafalls-live-med-emil-hansius-hampus-hedstrom-hotel-rival-2026-09-11-d53005</loc>
+    <loc>https://sthlmevents.lovable.app/event/hooja-grona-lund-2026-09-11-90f7aa</loc>
     <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/vafalls-live-med-emil-hansius-hampus-hedstrom-hotel-rival-2026-09-11-d53005</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -227,20 +233,20 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/comedy-store-the-laugh-house-2026-09-11-b8d2f7</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/eris-drew-nina-michelle-louis-wood-tradgarden-2026-09-11-108495</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/comedy-store-the-laugh-house-2026-09-11-b8d2f7</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/vafalls-live-med-emil-hansius-hampus-hedstrom-hotel-rival-2026-09-12-22580d</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -251,8 +257,8 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/anna-koka-5-agg-jag-ar-vard-i-huset-live-pa-scalateatern-scalateatern-2026-09-12-ad9ca0</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/the-blaze-checks-in-at-hotel-grand-stade-forbindelsehallen-2026-09-12-48ef23</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -263,20 +269,20 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/the-blaze-checks-in-at-hotel-grand-stade-forbindelsehallen-2026-09-12-48ef23</loc>
-    <lastmod>2026-08-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/urgent-audio-andree-bohlin-nila-roe-olle-hmm-tradgarden-2026-09-12-582cc7</loc>
-    <lastmod>2026-08-31</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/anna-koka-5-agg-jag-ar-vard-i-huset-live-pa-scalateatern-scalateatern-2026-09-12-ad9ca0</loc>
+    <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-clarion-hotel-sign-2026-09-12-00819b</loc>
     <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/urgent-audio-andree-bohlin-nila-roe-olle-hmm-tradgarden-2026-09-12-582cc7</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -288,7 +294,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/black-moose-biblioteket-live-2026-09-12-09416d</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -318,7 +324,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/megan-moroney-cirkus-2026-09-15-445131</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -365,8 +371,14 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/clapton-vs-springsteen-cirkus-2026-09-19-5b6e15</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/thomas-green-avicii-arena-2026-09-19-173343</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -377,8 +389,14 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/clapton-vs-springsteen-cirkus-2026-09-19-5b6e15</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/ibne-x-queerhel-slakthuset-2026-09-19-aa64bc</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/tradgarden-closing-saturday-tradgarden-2026-09-19-63b7b5</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -389,25 +407,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/ibne-x-queerhel-slakthuset-2026-09-19-aa64bc</loc>
-    <lastmod>2026-08-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/omid-jamshid-live-in-concert-framflyttad-cirkus-2026-09-19-44743d</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-clarion-hotel-sign-2026-09-19-8a9e8d</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/tradgarden-closing-saturday-tradgarden-2026-09-19-63b7b5</loc>
+    <loc>https://sthlmevents.lovable.app/event/omid-jamshid-live-in-concert-framflyttad-cirkus-2026-09-19-44743d</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -420,7 +426,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/a-ap-rocky-avicii-arena-2026-09-21-b7be28</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -432,7 +438,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/fran-elvis-presley-till-jerry-williams-hotel-rival-2026-09-23-3d6e49</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -444,13 +450,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/holly-humberstone-nalen-2026-09-24-40a63c</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/the-undertones-50th-anniversary-tour-sodra-teatern-2026-09-25-959bb9</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -461,19 +461,25 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/osvensk-fika-falafel-och-falukorv-cirkus-2026-09-25-171899</loc>
+    <loc>https://sthlmevents.lovable.app/event/the-undertones-50th-anniversary-tour-sodra-teatern-2026-09-25-959bb9</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/nordic-rave-techno-stockholm-slakthuset-2026-09-25-71f1e4</loc>
+    <loc>https://sthlmevents.lovable.app/event/osvensk-fika-falafel-och-falukorv-cirkus-2026-09-25-171899</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/kind-people-club-patrick-mason-slaktkyrkan-2026-09-25-5a4e8a</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/nordic-rave-techno-stockholm-slakthuset-2026-09-25-71f1e4</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -503,8 +509,8 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-clarion-hotel-sign-2026-09-26-8fb206</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/exit-hard-techno-darkroom-house-of-q-2026-09-26-c30d2d</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -515,13 +521,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/exit-hard-techno-darkroom-house-of-q-2026-09-26-c30d2d</loc>
-    <lastmod>2026-08-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/dj-hell-makode-linde-dj-killing-skankstasy-club-bang-bang-kinky-disco-eventhuset-2026-09-26-d1da54</loc>
+    <loc>https://sthlmevents.lovable.app/event/osvensk-fika-falafel-och-falukorv-cirkus-2026-09-26-0205c2</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -533,8 +533,14 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/osvensk-fika-falafel-och-falukorv-cirkus-2026-09-26-0205c2</loc>
+    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-clarion-hotel-sign-2026-09-26-8fb206</loc>
     <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/dj-hell-makode-linde-dj-killing-skankstasy-club-bang-bang-kinky-disco-eventhuset-2026-09-26-d1da54</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -545,13 +551,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/donny-benet-nalen-2026-09-27-038d8b</loc>
+    <loc>https://sthlmevents.lovable.app/event/the-proclaimers-kagelbanan-2026-09-27-e01bd8</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/the-proclaimers-kagelbanan-2026-09-27-e01bd8</loc>
+    <loc>https://sthlmevents.lovable.app/event/donny-benet-nalen-2026-09-27-038d8b</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -570,6 +576,12 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/the-best-of-mike-oldfield-s-tubular-bells-i-ii-iii-filadelfia-convention-center-2026-10-01-ebf7e6</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/black-sea-dahu-debaser-2026-10-02-86c358</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -581,20 +593,14 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/black-sea-dahu-debaser-2026-10-02-86c358</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-diyari-mahmoud-m-fl-clarion-hotel-sign-2026-10-02-1b9ae7</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/duran-duran-avicii-arena-2026-10-03-3b6b86</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -611,14 +617,20 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/jon-anderson-cirkus-2026-10-03-4e4951</loc>
+    <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/perkele-perkele-stockholm-2026-10-03-b666f5</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/jon-anderson-cirkus-2026-10-03-4e4951</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/tomas-andersson-wij-kyrkorna-2026-finalen-nalen-2026-10-03-cbad02</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -630,25 +642,19 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-diyari-mahmoud-m-fl-clarion-hotel-sign-2026-10-03-3405df</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/tomas-andersson-wij-kyrkorna-2026-finalen-nalen-2026-10-03-cbad02</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/max-raabe-palast-orchester-cirkus-2026-10-05-1b9524</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/max-raabe-palast-orchester-cirkus-2026-10-06-392511</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -666,7 +672,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/the-very-best-of-thin-lizzy-phil-lynott-and-gary-moore-cirkus-2026-10-07-95d622</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -690,7 +696,19 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/the-magic-numbers-debaser-2026-10-09-dbf02e</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-tobbe-strom-m-fl-clarion-hotel-sign-2026-10-09-d88749</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/khalid-it-s-always-summer-somewhere-tour-b-k-2026-10-09-29b0c2</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -701,25 +719,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/khalid-it-s-always-summer-somewhere-tour-b-k-2026-10-09-29b0c2</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-tobbe-strom-m-fl-clarion-hotel-sign-2026-10-09-d88749</loc>
+    <loc>https://sthlmevents.lovable.app/event/the-delines-debaser-2026-10-10-ca3370</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/bodyfest-2026-a-split-second-haujobb-m-fl-nalen-2026-10-10-b8460b</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/the-delines-debaser-2026-10-10-ca3370</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -738,25 +744,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/original-enigma-voices-cirkus-2026-10-10-10929c</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/toy-tonics-jam-bar15-2026-10-10-881e14</loc>
     <lastmod>2026-08-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/dj-godfather-psykoterapi-at-bronx-stockholm-10-oct-2026-eventhuset-2026-10-10-c35998</loc>
-    <lastmod>2026-08-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/thorbj-rn-risager-nalen-2026-10-10-530dba</loc>
-    <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -773,6 +761,24 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/dj-godfather-psykoterapi-at-bronx-stockholm-10-oct-2026-eventhuset-2026-10-10-c35998</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/toy-tonics-jam-bar15-2026-10-10-881e14</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/thorbj-rn-risager-nalen-2026-10-10-530dba</loc>
+    <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/charlotte-de-witte-fasching-2026-10-12-a0818a</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
@@ -780,13 +786,13 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/london-symphonic-rock-orchestra-gota-lejon-2026-10-12-bedb79</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/marko-hietala-debaser-2026-10-13-51ebc2</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -816,7 +822,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/janne-schaffer-cirkus-2026-10-15-71f8b3</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -834,13 +840,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/the-watch-plays-genesis-tales-from-1970-1976-cirkus-2026-10-16-4a402c</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/disco-inferno-sveriges-storsta-discoshow-jakobsgatan-6-2026-10-16-ecabfd</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -851,13 +851,25 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/disco-inferno-sveriges-storsta-discoshow-jakobsgatan-6-2026-10-16-ecabfd</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/tennessee-tears-debaser-2026-10-17-b7997d</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/strom-devils-cigarette-kollektivet-livet-2026-10-17-25879a</loc>
+    <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/maffia-maffia-comedy-superweekend-med-shanthi-rydwall-menon-m-fl-clarion-hotel-sign-2026-10-17-568ec5</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -869,12 +881,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/maffia-maffia-comedy-superweekend-med-shanthi-rydwall-menon-m-fl-clarion-hotel-sign-2026-10-17-568ec5</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/zucchero-cirkus-2026-10-21-dc3126</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
@@ -882,7 +888,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/rosanne-cash-with-john-leventhal-gota-lejon-2026-10-21-aa5c29</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -900,7 +906,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/grymlings-cirkus-2026-10-22-7ec72c</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -942,12 +948,18 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/europe-b-k-2026-10-24-f7a6f3</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/then-comes-silence-lakeside-x-kollektivet-livet-2026-10-24-f1f458</loc>
+    <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-ann-westin-m-fl-clarion-hotel-sign-2026-10-24-9ae2bc</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -959,14 +971,8 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-ann-westin-m-fl-clarion-hotel-sign-2026-10-24-9ae2bc</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/deep-purple-platinumbiljetter-avicii-arena-2026-10-26-c29b67</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -995,25 +1001,25 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/behemoth-dimmu-borgir-b-k-2026-10-29-ea6951</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/mick-harvey-amanda-acevedo-debaser-2026-10-29-ef8d8e</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/behemoth-dimmu-borgir-b-k-2026-10-29-ea6951</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://sthlmevents.lovable.app/event/john-achkar-feena-nehke-bio-skandia-2026-10-30-7d13fb</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/hanna-lublin-niklasson-lite-egentid-maxim-2026-10-30-c3a48c</loc>
+    <loc>https://sthlmevents.lovable.app/event/zimmer90-debaser-2026-10-30-29a470</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1025,13 +1031,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/zimmer90-debaser-2026-10-30-29a470</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-clarion-hotel-sign-2026-10-30-baebe7</loc>
+    <loc>https://sthlmevents.lovable.app/event/hanna-lublin-niklasson-lite-egentid-maxim-2026-10-30-c3a48c</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1043,8 +1043,8 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/obehoriga-timebar-2026-10-30-588522</loc>
-    <lastmod>2026-08-31</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/the-fray-autumn-light-tour-frihamnsgatan-14-2026-10-30-06d137</loc>
+    <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1055,20 +1055,26 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/the-fray-autumn-light-tour-frihamnsgatan-14-2026-10-30-06d137</loc>
+    <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-clarion-hotel-sign-2026-10-30-baebe7</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/harry-potter-och-dodsrelikerna-del-1-in-concert-stockholm-waterfront-2026-10-31-46a50a</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/obehoriga-timebar-2026-10-30-588522</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/warren-zeiders-fallan-2026-10-31-391e00</loc>
     <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/harry-potter-och-dodsrelikerna-del-1-in-concert-stockholm-waterfront-2026-10-31-46a50a</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1104,7 +1110,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/mo-gilligan-the-mo-you-know-gota-lejon-2026-11-04-4bf9cb</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1116,25 +1122,25 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/elvis-elvis-elvis-2026-cirkus-2026-11-05-df7f70</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/goran-bregovic-filadelfia-convention-center-2026-11-05-7d416e</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/soweto-gospel-choir-cirkus-2026-11-06-3b8a6c</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/paris-25-arsjubileum-kollektivet-livet-2026-11-06-4e7a0b</loc>
     <lastmod>2026-05-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/soweto-gospel-choir-cirkus-2026-11-06-3b8a6c</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1170,7 +1176,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/the-best-of-christer-sjogren-hotel-rival-2026-11-08-821bdf</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1188,13 +1194,13 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/manfred-mann-s-earth-band-cirkus-2026-11-09-4aedf7</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/kneecap-b-k-2026-11-09-9598d4</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1206,18 +1212,12 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/don-toliver-nitrous-octane-world-tour-leg-2-avicii-arena-2026-11-10-f9a35d</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/first-aid-kit-cirkus-2026-11-10-259529</loc>
-    <lastmod>2026-05-18</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://sthlmevents.lovable.app/event/eleine-eleine-stockholm-2026-11-11-dbffb2</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1229,14 +1229,20 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/the-simon-garfunkel-story-cirkus-2026-11-11-6d9b41</loc>
+    <loc>https://sthlmevents.lovable.app/event/eleine-eleine-stockholm-2026-11-11-dbffb2</loc>
     <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/the-simon-garfunkel-story-cirkus-2026-11-11-6d9b41</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/j-cole-avicii-arena-2026-11-11-0fe419</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1254,7 +1260,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/benjamin-ingrosso-avicii-arena-2026-11-13-17be7f</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1272,7 +1278,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/comedy-store-the-laugh-house-2026-11-13-8510d4</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1284,7 +1290,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/benjamin-ingrosso-avicii-arena-2026-11-14-81bcca</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1296,7 +1302,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/tomten-ar-far-till-alla-barnen-cirkus-2026-11-19-f7d041</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1308,7 +1314,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/tomten-ar-far-till-alla-barnen-cirkus-2026-11-20-27c312</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1368,7 +1374,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/beast-in-black-fryshuset-2026-11-25-0081f6</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1421,14 +1427,14 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/victor-leksell-avicii-arena-2026-11-28-6fc0e3</loc>
-    <lastmod>2026-08-31</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/klubb-dod-tyske-ludder-debaser-2026-11-28-7fc012</loc>
+    <lastmod>2026-05-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://sthlmevents.lovable.app/event/klubb-dod-tyske-ludder-debaser-2026-11-28-7fc012</loc>
-    <lastmod>2026-05-18</lastmod>
+    <loc>https://sthlmevents.lovable.app/event/victor-leksell-avicii-arena-2026-11-28-6fc0e3</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1439,8 +1445,14 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/fordomspodden-live-rival-2026-11-28-69e452</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-diyari-mahmoud-m-fl-clarion-hotel-sign-2026-11-28-277e4c</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1458,13 +1470,13 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/arlo-parks-desire-tour-slaktkyrkan-2026-12-02-587bc1</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/tomten-ar-far-till-alla-barnen-cirkus-2026-12-04-4848fc</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1482,7 +1494,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/tomten-ar-far-till-alla-barnen-cirkus-2026-12-05-e26777</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1494,7 +1506,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/tomten-ar-far-till-alla-barnen-cirkus-2026-12-06-dfe3af</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1518,7 +1530,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-tobbe-strom-m-fl-clarion-hotel-sign-2026-12-11-8d6ab7</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1530,7 +1542,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/brad-williams-tall-tales-tour-cirkus-2026-12-12-21a506</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1542,7 +1554,7 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/maffia-comedy-superweekend-med-tobbe-strom-m-fl-clarion-hotel-sign-2026-12-12-15a51c</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1578,54 +1590,60 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/hipphipp-live-cirkus-2027-01-20-90df16</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/hipphipp-live-cirkus-2027-01-21-c41f30</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/hipphipp-live-cirkus-2027-01-22-efdb71</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/hipphipp-live-cirkus-2027-01-23-7658a5</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/hipphipp-live-cirkus-2027-01-29-532fb7</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/hipphipp-live-cirkus-2027-01-30-61d3db</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/imminence-fallan-2027-02-05-c61a8c</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/the-amazing-hits-by-kiss-cirkus-2027-02-09-a28e96</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/rock-sensation-annexet-2027-02-16-f407f2</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://sthlmevents.lovable.app/event/daniel-sloss-bitter-waterfront-congress-centre-2027-02-26-4a7b18</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1643,8 +1661,14 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://sthlmevents.lovable.app/event/daniel-sloss-bitter-waterfront-congress-centre-2027-03-05-f9d9a3</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://sthlmevents.lovable.app/event/the-wall-livekonsert-filadelfia-convention-center-2027-03-06-c79dbd</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1656,25 +1680,25 @@
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/rush-fifty-something-platinumbiljetter-avicii-arena-2027-04-08-b0743c</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/copenhagen-drummers-gota-lejon-2027-04-14-397b69</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/fredrik-andersson-too-soon-cirkus-2027-04-23-108c18</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://sthlmevents.lovable.app/event/fredrik-andersson-too-soon-cirkus-2027-05-14-7ce60a</loc>
-    <lastmod>2026-05-18</lastmod>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
