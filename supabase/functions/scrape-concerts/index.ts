@@ -148,6 +148,7 @@ async function runSource(jobId: string, index: number) {
 
       const sourceUrl = normalizeExternalUrl(d.source_url);
       if (!sourceUrl) continue;
+      if (isNonStockholm(sourceUrl, d.venue_raw, d.address_raw)) continue;
       const candidateTicket = normalizeExternalUrl(d.ticket_url, sourceUrl);
       const ticket = isTicketSellerUrl(candidateTicket) ? candidateTicket : null;
       const image = goodImageUrl(d.image_url);
@@ -158,13 +159,17 @@ async function runSource(jobId: string, index: number) {
         venue: venue!,
         date: date.toISOString(),
         ticket_url: ticket,
-        tickets_available: !!ticket,
+        // Any working outbound link (seller or the source's own event page)
+        // means the event is bookable. TBA is reserved for events with no link
+        // at all or a future ticket_sale_date.
+        tickets_available: true,
         image_url: image,
         description,
         source: src.source_label,
         source_url: sourceUrl,
         event_type: d.event_type,
       };
+
 
       const { data: existing } = await sb
         .from("concerts")
@@ -178,7 +183,8 @@ async function runSource(jobId: string, index: number) {
           artist: row.artist,
           venue: row.venue,
           ticket_url: row.ticket_url ?? existing.ticket_url,
-          tickets_available: row.tickets_available || !!existing.ticket_url,
+          tickets_available: true,
+
           image_url: row.image_url ?? existing.image_url,
           description: row.description ?? existing.description,
           event_type: row.event_type,
