@@ -9,8 +9,8 @@ export const KNOWN_VENUES = [
   "Debaser Strand", "Debaser Hornstulls Strand", "Debaser Medis", "Debaser Slussen",
   "Debaser", "Nalen", "Münchenbryggeriet", "Fryshuset", "Klubben", "Arenan",
   "Berns", "Berns Salonger", "Södra Teatern", "Kägelbanan", "Slaktkyrkan",
-  "Gröna Lund", "Stora Scen", "Cirkus Cirkör", "Hyvens", "Nöjesteatern",
-  "Bar Brooklyn", "Pustervik", "Annexet", "Hovet", "Globen", "Fasching",
+  "Gröna Lund", "Stora Scen", "Cirkus Cirkör", "Hyvens",
+  "Bar Brooklyn", "Annexet", "Hovet", "Globen", "Fasching",
   "Tyrol", "Trädgården", "Under Bron", "Pet Sounds Bar", "Hus 7",
 ];
 

@@ -38,6 +38,22 @@ function bearer(req: Request): string | null {
   return auth?.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
+// Aggregator listings (livespot, evently) sometimes bleed in other cities via
+// "related events" blocks. Reject anything that clearly names another Swedish city.
+const OTHER_CITIES = [
+  "goteborg", "göteborg", "gothenburg", "malmo", "malmö", "uppsala", "linkoping",
+  "linköping", "orebro", "örebro", "vasteras", "västerås", "helsingborg", "norrkoping",
+  "norrköping", "jonkoping", "jönköping", "umea", "umeå", "lund", "gavle", "gävle",
+  "sundsvall", "karlstad", "vaxjo", "växjö", "copenhagen", "kobenhavn", "oslo", "helsinki",
+];
+
+function isNonStockholm(sourceUrl: string, venueRaw?: string, addressRaw?: string): boolean {
+  const haystack = `${sourceUrl} ${venueRaw ?? ""} ${addressRaw ?? ""}`.toLowerCase();
+  if (/stockholm|sthlm/.test(haystack)) return false;
+  return OTHER_CITIES.some((city) => haystack.includes(city));
+}
+
+
 async function authedAdminUserId(req: Request): Promise<string | null> {
   const token = bearer(req);
   if (!token) return null;
