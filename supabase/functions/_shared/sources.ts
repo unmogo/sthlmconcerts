@@ -74,7 +74,7 @@ export const SOURCES: SourceDef[] = [
 
 const MONTHS: Record<string, string> = {
   jan: "01", "jan.": "01", januari: "01", feb: "02", "feb.": "02", februari: "02",
-  mar: "03", "mars": "03", apr: "04", "apr.": "04", april: "04", maj: "05",
+  mar: "03", "mars": "03", may: "05", oct: "10", apr: "04", "apr.": "04", april: "04", maj: "05",
   jun: "06", "juni": "06", jul: "07", "juli": "07", aug: "08", "aug.": "08", augusti: "08",
   sep: "09", "sep.": "09", september: "09", okt: "10", "okt.": "10", oktober: "10",
   nov: "11", "nov.": "11", november: "11", dec: "12", "dec.": "12", december: "12",

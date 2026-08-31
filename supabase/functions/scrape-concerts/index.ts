@@ -12,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
 import { SOURCES, fetchSource } from "../_shared/sources.ts";
 import { aiResolveVenue, isValidVenue, quickResolveVenue } from "../_shared/venues.ts";
-import { goodImageUrl, isTicketSellerUrl, normalizeExternalUrl } from "../_shared/event-extract.ts";
+import { goodImageUrl, isUsableTicketUrl, normalizeExternalUrl } from "../_shared/event-extract.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -166,7 +166,9 @@ async function runSource(jobId: string, index: number) {
       if (!sourceUrl) continue;
       if (isNonStockholm(sourceUrl, d.venue_raw, d.address_raw)) continue;
       const candidateTicket = normalizeExternalUrl(d.ticket_url, sourceUrl);
-      const ticket = isTicketSellerUrl(candidateTicket) ? candidateTicket : null;
+      // Any non-aggregator outbound link is a valid checkout target: sellers
+      // (tickster/ticketmaster/axs) and venue booking pages alike.
+      const ticket = isUsableTicketUrl(candidateTicket) ? candidateTicket : null;
       const image = goodImageUrl(d.image_url);
       const description = (d.description ?? "").trim().slice(0, 1000) || null;
 
