@@ -95,10 +95,15 @@ export async function fetchSource(
   src: SourceDef,
   deadline: number = Date.now() + 200_000,
 ): Promise<EventDraft[]> {
+  // LiveSpot is server-rendered with full schema.org data on every event page —
+  // no Firecrawl, no AI, and it yields the real seller link + poster.
+  if (src.name.startsWith("livespot-")) return fetchLivespot(src, deadline);
+  if (src.name === "cirkus") return fetchCirkus(src, deadline);
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
   if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md, deadline);
   if (src.name === "ra-stockholm") return fetchRaStockholm(src, md, deadline);
+
   // Cap markdown to keep AI context small
   const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
 
