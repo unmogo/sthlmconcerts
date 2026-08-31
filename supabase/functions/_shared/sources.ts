@@ -1,8 +1,8 @@
 // Source definitions: each describes how to scrape a listing into EventDrafts.
 // Listing pages → markdown → AI structured extraction.
-import { scrapeMarkdown } from "./firecrawl.ts";
+import { scrapeHtml, scrapeMarkdown } from "./firecrawl.ts";
 import { AiClient, EVENT_DRAFT_SCHEMA, type EventDraft } from "./ai.ts";
-import { goodImageUrl, normalizeExternalUrl } from "./event-extract.ts";
+import { extractMetaContent, extractTicketUrlFromHtml, goodImageUrl, isUsableTicketUrl, normalizeExternalUrl, parseJsonLdEvents, stripTags } from "./event-extract.ts";
 
 export type SourceDef = {
   name: string;
@@ -351,3 +351,204 @@ function parseRaListingMarkdown(md: string): EventDraft[] {
   return drafts;
 }
 
+
+// ---------------------------------------------------------------------------
+// Generic helpers
+// ---------------------------------------------------------------------------
+
+// Plain fetch with a hard timeout. Used for sources that are server-rendered
+// and don't need a headless browser — much faster and free of Firecrawl's
+// shared rate limit.
+async function getHtml(url: string, timeoutMs = 12_000): Promise<string> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: ctl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; STHLMEventsBot/1.0; +https://sthlmevents.lovable.app)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
+      },
+    });
+    if (!res.ok) return "";
+    return await res.text();
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Bounded-concurrency map that stops issuing new work past the deadline.
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  deadline: number,
+  fn: (item: T) => Promise<R | null>,
+): Promise<R[]> {
+  const out: R[] = [];
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length && Date.now() < deadline) {
+      const item = items[cursor++];
+      const result = await fn(item).catch(() => null);
+      if (result) out.push(result);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+const NON_MUSIC_JSONLD_TYPES = [
+  "TheaterEvent", "ScreeningEvent", "SportsEvent", "ExhibitionEvent",
+  "ChildrensEvent", "EducationEvent", "BusinessEvent", "FoodEvent",
+];
+
+// ---------------------------------------------------------------------------
+// LiveSpot
+// ---------------------------------------------------------------------------
+
+// LiveSpot's category page is server-rendered, and its React Router data
+// endpoint (`<path>.data?page=N`) paginates through the full Stockholm list.
+// Every event page carries schema.org data with the real seller URL in
+// `offers.url` and the poster in `image.url`, so we never have to guess.
+async function fetchLivespot(src: SourceDef, deadline: number): Promise<EventDraft[]> {
+  const slugs = await harvestLivespotSlugs(src.url, deadline);
+  if (!slugs.length) return [];
+
+  const drafts = await mapPool(slugs, 6, deadline - 20_000, async (slug) => {
+    const url = `https://livespot.se/event/${slug}`;
+    const html = await getHtml(url);
+    if (!html) return null;
+    const events = parseJsonLdEvents(html, url);
+    const event = events.find((e) => e.startDate && e.venue);
+    if (!event) return null;
+    if (NON_MUSIC_JSONLD_TYPES.includes(event.type)) return null;
+    if (event.locality && !/stockholm/i.test(event.locality)) return null;
+
+    const ticket = isUsableTicketUrl(event.offerUrl) ? event.offerUrl! : "";
+    const image = event.image
+      ?? goodImageUrl(extractMetaContent(html, "og:image"))
+      ?? "";
+
+    const draft: EventDraft = {
+      artist: event.name || stripTags(extractMetaContent(html, "og:title") ?? ""),
+      venue_raw: event.venue,
+      address_raw: event.locality || "Stockholm",
+      date_iso: event.startDate,
+      ticket_url: ticket,
+      source_url: url,
+      image_url: image,
+      description: event.description,
+      event_type: event.type === "ComedyEvent" ? "comedy" : src.default_event_type,
+    };
+    return draft.artist ? draft : null;
+  });
+
+  return drafts;
+}
+
+async function harvestLivespotSlugs(listingUrl: string, deadline: number): Promise<string[]> {
+  const slugs = new Set<string>();
+  const collect = (text: string) => {
+    let added = 0;
+    for (const m of text.matchAll(/([a-z0-9]+(?:-[a-z0-9]+){1,12}-[0-9a-f]{8})(?![0-9a-f])/g)) {
+      const slug = m[1];
+      // Reject UUID fragments: a real slug has at least one segment with a
+      // letter outside the hex alphabet.
+      if (!/[g-z]/.test(slug.slice(0, -9))) continue;
+      if (!slugs.has(slug)) { slugs.add(slug); added++; }
+    }
+    return added;
+  };
+
+  collect(await getHtml(listingUrl));
+
+  let emptyPages = 0;
+  for (let page = 1; page <= 60 && Date.now() < deadline - 60_000; page++) {
+    const text = await getHtml(`${listingUrl}.data?page=${page}`, 15_000);
+    if (!text) { emptyPages++; } else { emptyPages = collect(text) > 0 ? 0 : emptyPages + 1; }
+    if (emptyPages >= 3) break;
+  }
+
+  return [...slugs];
+}
+
+// ---------------------------------------------------------------------------
+// Cirkus (venue site)
+// ---------------------------------------------------------------------------
+
+// Cirkus blocks plain bots, so the listing and detail pages go through
+// Firecrawl. Every show page links straight to its ticket vendor.
+async function fetchCirkus(src: SourceDef, deadline: number): Promise<EventDraft[]> {
+  const listing = await scrapeHtml(src.url, { waitFor: src.waitFor, timeoutMs: 40_000 });
+  if (!listing) return [];
+  const links = [...new Set(
+    Array.from(listing.matchAll(/href=["'](?:https:\/\/cirkus\.se)?(\/(?:sv|en)\/evenemang\/[a-z0-9-]+\/?)["']/gi))
+      .map((m) => `https://cirkus.se${m[1].replace(/\/en\//, "/sv/")}`),
+  )].slice(0, 40);
+
+  const drafts: EventDraft[] = [];
+  for (const link of links) {
+    if (Date.now() > deadline - 15_000) break;
+    const html = await scrapeHtml(link, { waitFor: 1200, timeoutMs: 30_000 }).catch(() => "");
+    if (!html) continue;
+    drafts.push(...extractCirkusEvents(html, link, src.default_event_type));
+  }
+  return drafts;
+}
+
+function extractCirkusEvents(html: string, url: string, defaultType: "concert" | "comedy"): EventDraft[] {
+  const title = stripTags(extractMetaContent(html, "og:title") ?? "").replace(/\s*[|–-]\s*Cirkus.*$/i, "").trim();
+  const image = goodImageUrl(extractMetaContent(html, "og:image")) ?? "";
+  const description = (extractMetaContent(html, "og:description") ?? "").slice(0, 1000);
+  const ticketCandidate = extractTicketUrlFromHtml(html);
+  const ticket = isUsableTicketUrl(ticketCandidate) ? ticketCandidate! : "";
+
+  const structured = parseJsonLdEvents(html, url).filter(
+    (e) => e.startDate && !NON_MUSIC_JSONLD_TYPES.includes(e.type),
+  );
+  if (structured.length) {
+    return structured.map((e) => ({
+      artist: e.name || title,
+      venue_raw: e.venue || "Cirkus",
+      address_raw: "Stockholm",
+      date_iso: e.startDate,
+      ticket_url: (isUsableTicketUrl(e.offerUrl) ? e.offerUrl! : ticket),
+      source_url: url,
+      image_url: e.image ?? image,
+      description: e.description || description,
+      event_type: e.type === "ComedyEvent" ? "comedy" : defaultType,
+    }));
+  }
+
+  // No structured data: read the "DATE" table ("03 OCT 2026 … SAT 19:30").
+  if (!title) return [];
+  const text = stripTags(html);
+  const out: EventDraft[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(
+    /(\d{1,2})\s+([A-Za-zÅÄÖåäö.]{3,9})\s+(20\d{2})[^0-9]{0,40}?(\d{1,2})[:.](\d{2})/g,
+  )) {
+    const month = MONTHS[m[2].toLowerCase().slice(0, 3)] ?? MONTHS[m[2].toLowerCase()];
+    if (!month) continue;
+    const iso = `${m[3]}-${month}-${m[1].padStart(2, "0")}T${m[4].padStart(2, "0")}:${m[5]}:00${
+      Number(month) >= 4 && Number(month) <= 10 ? "+02:00" : "+01:00"
+    }`;
+    if (seen.has(iso)) continue;
+    seen.add(iso);
+    out.push({
+      artist: title,
+      venue_raw: "Cirkus",
+      address_raw: "Stockholm",
+      date_iso: iso,
+      ticket_url: ticket,
+      source_url: url,
+      image_url: image,
+      description,
+      event_type: defaultType,
+    });
+  }
+  return out;
+}
