@@ -218,15 +218,16 @@ async function runJob(jobId: string) {
   await patchJob(jobId, { status: "running", total, current_step: "fetching" });
 
   let updated = 0;
-  for (let i = 0; i < targets.length; i++) {
-    const c = targets[i];
+  let processed = 0;
+
+  const handle = async (c: typeof targets[number]) => {
     try {
       // Cheapest win first: rewrite a known low-res CDN crop to its large variant.
       const upgraded = c.image_url ? goodImageUrl(upgradeImageUrl(c.image_url)) : null;
       if (upgraded && upgraded !== c.image_url && !isLowQualityImageUrl(upgraded)) {
         await sb.from("concerts").update({ image_url: upgraded }).eq("id", c.id);
         updated++;
-        continue;
+        return;
       }
       const url = await findImage(ai, c.artist, c.source_url, c.ticket_url);
       if (url) {
@@ -236,10 +237,23 @@ async function runJob(jobId: string) {
         await sb.from("concerts").update({ image_url: null }).eq("id", c.id);
       }
     } catch (_e) { /* continue */ }
-    if (i % 5 === 0) {
-      await patchJob(jobId, { progress: i + 1, events_upserted: updated, ai_calls: ai.usage.calls });
-    }
-  }
+  };
+
+  // Four in flight: the work is almost entirely network-bound, so this cuts a
+  // full run from tens of minutes to a few, without hammering any single host.
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: 4 }, async () => {
+      while (cursor < targets.length) {
+        await handle(targets[cursor++]);
+        processed++;
+        if (processed % 10 === 0) {
+          await patchJob(jobId, { progress: processed, events_upserted: updated, ai_calls: ai.usage.calls });
+        }
+      }
+    }),
+  );
+
 
   await patchJob(jobId, {
     status: "completed",
