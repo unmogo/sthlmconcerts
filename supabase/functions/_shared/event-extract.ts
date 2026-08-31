@@ -78,6 +78,36 @@ export function isTicketSellerUrl(url: string | null | undefined): boolean {
   }
 }
 
+// Aggregators are great discovery surfaces but must never be the final ticket
+// destination (they are competitors and their pages are not checkout pages).
+const AGGREGATOR_HOSTS = [
+  "evently.se", "livespot.se", "evenemangskollen.se", "songkick.com", "bandsintown.com",
+];
+
+export function isAggregatorUrl(url: string | null | undefined): boolean {
+  const normalized = normalizeExternalUrl(url);
+  if (!normalized) return false;
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    return AGGREGATOR_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+// A ticket URL is usable when it points off-aggregator: either a known seller
+// (tickster, ticketmaster, axs, …) or the venue's own booking page. Restricting
+// to the seller allowlist was why perfectly good LiveSpot/venue links were
+// dropped and the event ended up marked TBA.
+export function isUsableTicketUrl(url: string | null | undefined): boolean {
+  const normalized = normalizeExternalUrl(url);
+  if (!normalized) return false;
+  if (isAggregatorUrl(normalized)) return false;
+  return /^https?:\/\//i.test(normalized);
+}
+
+
+
 export function extractTicketUrl(rawUrl: string): string | null {
   const decodedInput = decodeMaybe(rawUrl);
   if (!decodedInput || /^(https?:?)$/i.test(decodedInput.trim())) return null;
@@ -234,5 +264,53 @@ export function extractJsonLd(html: string): unknown[] {
       // ignore malformed structured data
     }
   }
+  return out;
+}
+
+export type JsonLdEvent = {
+  type: string;
+  name: string;
+  startDate: string;
+  venue: string;
+  locality: string;
+  image: string | null;
+  offerUrl: string | null;
+  description: string;
+};
+
+// Most modern ticketing/venue/aggregator pages ship schema.org Event data.
+// Parsing it deterministically is faster, cheaper and far more accurate than
+// asking a model to read a markdown dump.
+export function parseJsonLdEvents(html: string, baseUrl: string): JsonLdEvent[] {
+  const out: JsonLdEvent[] = [];
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (!node || typeof node !== "object") return;
+    const o = node as Record<string, unknown>;
+    if (Array.isArray(o["@graph"])) walk(o["@graph"]);
+    const type = String(Array.isArray(o["@type"]) ? o["@type"][0] : o["@type"] ?? "");
+    if (!/Event$/i.test(type) && type !== "Festival") return;
+    const loc = (o.location ?? {}) as Record<string, unknown>;
+    const address = (loc.address ?? {}) as Record<string, unknown>;
+    const img = o.image;
+    const rawImage = typeof img === "string"
+      ? img
+      : Array.isArray(img)
+        ? (typeof img[0] === "string" ? img[0] : String((img[0] as Record<string, unknown>)?.url ?? ""))
+        : String((img as Record<string, unknown>)?.url ?? "");
+    const offers = Array.isArray(o.offers) ? o.offers[0] : o.offers;
+    const offerUrl = normalizeExternalUrl(String((offers as Record<string, unknown>)?.url ?? ""), baseUrl);
+    out.push({
+      type,
+      name: stripTags(String(o.name ?? "")),
+      startDate: String(o.startDate ?? ""),
+      venue: stripTags(String(loc.name ?? "")),
+      locality: stripTags(String(address.addressLocality ?? "")),
+      image: goodImageUrl(rawImage ? absoluteUrl(rawImage, baseUrl) : null),
+      offerUrl,
+      description: stripTags(String(o.description ?? "")).slice(0, 1000),
+    });
+  };
+  for (const parsed of extractJsonLd(html)) walk(parsed);
   return out;
 }

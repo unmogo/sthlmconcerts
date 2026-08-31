@@ -3,7 +3,7 @@
 // 4) Wikipedia  5) og:image of source_url. Skips ambiguous artists.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
-import { extractBestImageUrlFromHtml, extractEventImageUrl, goodImageUrl, isBadImageUrl, isLowQualityImageUrl, upgradeImageUrl } from "../_shared/event-extract.ts";
+import { extractBestImageUrlFromHtml, extractEventImageUrl, goodImageUrl, isBadImageUrl, isLowQualityImageUrl, parseJsonLdEvents, upgradeImageUrl } from "../_shared/event-extract.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -163,14 +163,22 @@ async function findImage(
   ai: AiClient,
   artist: string,
   source_url: string | null,
+  ticket_url: string | null,
 ): Promise<string | null> {
-  // 1. og:image of source_url (most reliable for Eventim, Livespot)
-  if (source_url) {
-    const html = await getText(source_url);
-    if (html) {
-      const og = extractBestImageUrlFromHtml(html, source_url) ?? extractEventImageUrl(html, source_url);
-      if (og && (await imageReachable(og))) return og;
-    }
+  // 1. Poster on the event's own pages. The ticket page (Tickster, Ticketmaster,
+  //    venue checkout) is usually the highest-quality source, the listing page
+  //    the most reliable — try both before touching any generic lookup.
+  for (const page of [ticket_url, source_url]) {
+    if (!page) continue;
+    const html = await getText(page);
+    if (!html) continue;
+    const structured = parseJsonLdEvents(html, page)
+      .map((e) => e.image)
+      .find((img): img is string => !!img && !isLowQualityImageUrl(img));
+    const og = structured
+      ?? extractBestImageUrlFromHtml(html, page)
+      ?? extractEventImageUrl(html, page);
+    if (og && (await imageReachable(og))) return og;
   }
   // 2. Disambiguate before web/db lookup
   const dis = await disambiguate(ai, artist);
@@ -199,7 +207,7 @@ async function runJob(jobId: string) {
   const ai = new AiClient();
   const { data: rows } = await sb
     .from("concerts")
-    .select("id, artist, source_url, image_url")
+    .select("id, artist, source_url, ticket_url, image_url")
     .gte("date", new Date().toISOString())
     .order("date", { ascending: true })
     .limit(1000);
@@ -210,17 +218,18 @@ async function runJob(jobId: string) {
   await patchJob(jobId, { status: "running", total, current_step: "fetching" });
 
   let updated = 0;
-  for (let i = 0; i < targets.length; i++) {
-    const c = targets[i];
+  let processed = 0;
+
+  const handle = async (c: typeof targets[number]) => {
     try {
       // Cheapest win first: rewrite a known low-res CDN crop to its large variant.
       const upgraded = c.image_url ? goodImageUrl(upgradeImageUrl(c.image_url)) : null;
       if (upgraded && upgraded !== c.image_url && !isLowQualityImageUrl(upgraded)) {
         await sb.from("concerts").update({ image_url: upgraded }).eq("id", c.id);
         updated++;
-        continue;
+        return;
       }
-      const url = await findImage(ai, c.artist, c.source_url);
+      const url = await findImage(ai, c.artist, c.source_url, c.ticket_url);
       if (url) {
         await sb.from("concerts").update({ image_url: url }).eq("id", c.id);
         updated++;
@@ -228,10 +237,23 @@ async function runJob(jobId: string) {
         await sb.from("concerts").update({ image_url: null }).eq("id", c.id);
       }
     } catch (_e) { /* continue */ }
-    if (i % 5 === 0) {
-      await patchJob(jobId, { progress: i + 1, events_upserted: updated, ai_calls: ai.usage.calls });
-    }
-  }
+  };
+
+  // Four in flight: the work is almost entirely network-bound, so this cuts a
+  // full run from tens of minutes to a few, without hammering any single host.
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: 4 }, async () => {
+      while (cursor < targets.length) {
+        await handle(targets[cursor++]);
+        processed++;
+        if (processed % 10 === 0) {
+          await patchJob(jobId, { progress: processed, events_upserted: updated, ai_calls: ai.usage.calls });
+        }
+      }
+    }),
+  );
+
 
   await patchJob(jobId, {
     status: "completed",
