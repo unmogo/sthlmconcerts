@@ -15,15 +15,18 @@ async function takeSlot() {
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 }
 
+type ScrapeResult = { markdown?: string; html?: string; data?: { markdown?: string; html?: string } };
+
 export async function scrapeMarkdown(url: string, opts?: { waitFor?: number; timeoutMs?: number }): Promise<string> {
-  const data = await scrapeFormats(url, ["markdown"], opts);
-  return (data?.data?.markdown ?? data?.markdown ?? "") as string;
+  const data = await scrapeFormats(url, ["markdown"], opts) as ScrapeResult | null;
+  return data?.data?.markdown ?? data?.markdown ?? "";
 }
 
 export async function scrapeHtml(url: string, opts?: { waitFor?: number; timeoutMs?: number }): Promise<string> {
-  const data = await scrapeFormats(url, ["html"], opts);
-  return (data?.data?.html ?? data?.html ?? "") as string;
+  const data = await scrapeFormats(url, ["html"], opts) as ScrapeResult | null;
+  return data?.data?.html ?? data?.html ?? "";
 }
+
 
 async function scrapeFormats(
   url: string,
