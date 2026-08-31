@@ -185,6 +185,7 @@ async function runSource(jobId: string, index: number) {
           ticket_url: row.ticket_url ?? existing.ticket_url,
           tickets_available: true,
 
+
           image_url: row.image_url ?? existing.image_url,
           description: row.description ?? existing.description,
           event_type: row.event_type,
