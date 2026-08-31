@@ -12,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
 import { SOURCES, fetchSource } from "../_shared/sources.ts";
 import { aiResolveVenue, isValidVenue, quickResolveVenue } from "../_shared/venues.ts";
-import { goodImageUrl, isUsableTicketUrl, normalizeExternalUrl } from "../_shared/event-extract.ts";
+import { goodImageUrl, isBadImageUrl, isUsableTicketUrl, normalizeExternalUrl } from "../_shared/event-extract.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -200,11 +200,13 @@ async function runSource(jobId: string, index: number) {
         await sb.from("concerts").update({
           artist: row.artist,
           venue: row.venue,
-          ticket_url: row.ticket_url ?? existing.ticket_url,
+          // Never keep an aggregator link when a real checkout link is known.
+          ticket_url: row.ticket_url
+            ?? (isUsableTicketUrl(existing.ticket_url) ? existing.ticket_url : null),
           tickets_available: true,
 
 
-          image_url: row.image_url ?? existing.image_url,
+          image_url: row.image_url ?? (isBadImageUrl(existing.image_url) ? null : existing.image_url),
           description: row.description ?? existing.description,
           event_type: row.event_type,
           source: row.source,
