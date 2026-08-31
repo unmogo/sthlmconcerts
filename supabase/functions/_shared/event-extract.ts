@@ -128,23 +128,60 @@ export function isBadImageUrl(url: string | null | undefined): boolean {
     || /wikimedia\.org\/wikipedia\/commons\/thumb/.test(lower);
 }
 
+// Rewrites known CDN URLs to their highest-resolution variant. This is the main
+// fix for pixelated cards: e.g. Ticketmaster's EVENT_DETAIL_PAGE crop is 205x115.
 export function upgradeImageUrl(url: string | null | undefined): string | null {
   const clean = normalizeExternalUrl(url);
   if (!clean) return null;
-  if (/static\.tickster\.com\/cdn-cgi\/image\//i.test(clean)) {
-    return clean
-      .replace(/width=\d+/i, "width=960")
-      .replace(/height=\d+/i, "height=540");
+  let out = clean;
+
+  // Ticketmaster / Live Nation DAM: swap the small crop for the 2048x1152 one.
+  out = out.replace(
+    /_(EVENT_DETAIL_PAGE|SOURCE|CUSTOM|RECOMENDATION_16_9|RETINA_PORTRAIT|TABLET_LANDSCAPE|ARTIST_PAGE)(_16_9|_3_2)?\.(jpg|jpeg|png|webp)/i,
+    "_TABLET_LANDSCAPE_LARGE_16_9.$3",
+  );
+
+  // Tickster CDN resize params.
+  if (/static\.tickster\.com\/cdn-cgi\/image\//i.test(out)) {
+    out = out.replace(/width=\d+/i, "width=960").replace(/height=\d+/i, "height=540");
   }
-  return clean;
+
+  // Livespot serves /<size>.webp derivatives; 800 is the largest available.
+  out = out.replace(/(livespot\.se\/img\/[0-9a-f]{8,}\/)\d+(\.(?:webp|jpg|jpeg|png))/i, "$1800$2");
+
+  // Live Nation dynamic media: force a large render.
+  if (/dynamicmedia\.livenationinternational\.com/i.test(out)) {
+    out = out.replace(/width=\d+/i, "width=1920").replace(/quality=\d+/i, "quality=90");
+  }
+
+  // RA imgproxy wraps a base64 original at quality:66 — use the original instead.
+  const raProxy = out.match(/imgproxy\.ra\.co\/_\/[^/]*\/([A-Za-z0-9_-]{16,}=*)$/);
+  if (raProxy) {
+    const original = decodeBase64Url(raProxy[1]);
+    if (original && /^https:\/\/images\.ra\.co\//i.test(original)) out = original;
+  }
+
+  return out;
+}
+
+function decodeBase64Url(value: string): string | null {
+  try {
+    const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+    return atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+  } catch {
+    return null;
+  }
 }
 
 export function isLowQualityImageUrl(url: string | null | undefined): boolean {
   const lower = (url ?? "").toLowerCase();
   const ticksterWidth = lower.match(/static\.tickster\.com\/cdn-cgi\/image\/[^/]*width=(\d+)/)?.[1];
   if (ticksterWidth && Number(ticksterWidth) < 700) return true;
+  if (/_event_detail_page(_16_9)?\.(jpg|jpeg|png|webp)/.test(lower)) return true;
+  if (/livespot\.se\/img\/[0-9a-f]{8,}\/[1-4]?\d{1,2}\./.test(lower)) return true;
   return /\/teaser\/222x222\/|[\/_-]222x222|width=(1\d\d|2\d\d|3\d\d)\b|height=(1\d\d|2\d\d|3\d\d)\b/.test(lower);
 }
+
 
 export function goodImageUrl(url: string | null | undefined): string | null {
   const clean = upgradeImageUrl(url);
