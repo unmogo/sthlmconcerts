@@ -134,6 +134,7 @@ export type Database = {
           events_found: number
           events_upserted: number
           finished_at: string | null
+          heartbeat_at: string | null
           id: string
           kind: string
           progress: number
@@ -151,6 +152,7 @@ export type Database = {
           events_found?: number
           events_upserted?: number
           finished_at?: string | null
+          heartbeat_at?: string | null
           id?: string
           kind: string
           progress?: number
@@ -168,6 +170,7 @@ export type Database = {
           events_found?: number
           events_upserted?: number
           finished_at?: string | null
+          heartbeat_at?: string | null
           id?: string
           kind?: string
           progress?: number
