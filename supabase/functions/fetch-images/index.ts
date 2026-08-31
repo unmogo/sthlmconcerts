@@ -3,7 +3,7 @@
 // 4) Wikipedia  5) og:image of source_url. Skips ambiguous artists.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
-import { extractBestImageUrlFromHtml, extractEventImageUrl, goodImageUrl, isBadImageUrl, isLowQualityImageUrl } from "../_shared/event-extract.ts";
+import { extractBestImageUrlFromHtml, extractEventImageUrl, goodImageUrl, isBadImageUrl, isLowQualityImageUrl, upgradeImageUrl } from "../_shared/event-extract.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -191,7 +191,7 @@ async function findImage(
 }
 
 async function patchJob(jobId: string, patch: Record<string, unknown>) {
-  await db().from("scrape_jobs").update(patch).eq("id", jobId);
+  await db().from("scrape_jobs").update({ heartbeat_at: new Date().toISOString(), ...patch }).eq("id", jobId);
 }
 
 async function runJob(jobId: string) {
@@ -213,6 +213,13 @@ async function runJob(jobId: string) {
   for (let i = 0; i < targets.length; i++) {
     const c = targets[i];
     try {
+      // Cheapest win first: rewrite a known low-res CDN crop to its large variant.
+      const upgraded = c.image_url ? goodImageUrl(upgradeImageUrl(c.image_url)) : null;
+      if (upgraded && upgraded !== c.image_url && !isLowQualityImageUrl(upgraded)) {
+        await sb.from("concerts").update({ image_url: upgraded }).eq("id", c.id);
+        updated++;
+        continue;
+      }
       const url = await findImage(ai, c.artist, c.source_url);
       if (url) {
         await sb.from("concerts").update({ image_url: url }).eq("id", c.id);
@@ -225,6 +232,7 @@ async function runJob(jobId: string) {
       await patchJob(jobId, { progress: i + 1, events_upserted: updated, ai_calls: ai.usage.calls });
     }
   }
+
   await patchJob(jobId, {
     status: "completed",
     progress: total,

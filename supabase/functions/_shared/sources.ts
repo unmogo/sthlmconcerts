@@ -82,14 +82,17 @@ const SYSTEM = [
   "Do not invent venues or dates. Empty string for unknown fields.",
 ].join(" ");
 
+// `deadline` is an absolute epoch-ms budget: every multi-page loop checks it and
+// returns what it has instead of running until the edge runtime kills the job.
 export async function fetchSource(
   ai: AiClient,
   src: SourceDef,
+  deadline: number = Date.now() + 200_000,
 ): Promise<EventDraft[]> {
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
-  if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md);
-  if (src.name === "ra-stockholm") return fetchRaStockholm(src, md);
+  if (src.name.startsWith("eventim-")) return fetchEventimStockholm(src, md, deadline);
+  if (src.name === "ra-stockholm") return fetchRaStockholm(src, md, deadline);
   // Cap markdown to keep AI context small
   const trimmed = md.length > 60_000 ? md.slice(0, 60_000) : md;
 
@@ -113,24 +116,26 @@ export async function fetchSource(
     }));
 }
 
-async function fetchEventimStockholm(src: SourceDef, cityMarkdown: string): Promise<EventDraft[]> {
+async function fetchEventimStockholm(src: SourceDef, cityMarkdown: string, deadline: number): Promise<EventDraft[]> {
   const links = Array.from(cityMarkdown.matchAll(/\]\((https:\/\/www\.eventim\.se\/(?:artist|eventseries)\/[^)\s"]+)/g))
     .map((m) => m[1])
     .filter((url, i, arr) => arr.indexOf(url) === i)
-    .slice(0, 35);
+    .slice(0, 60);
 
   const out: EventDraft[] = [];
   for (const link of links) {
+    if (Date.now() > deadline) break;
     try {
-      const artistMarkdown = await scrapeMarkdown(link, { waitFor: 1200 });
+      const artistMarkdown = await scrapeMarkdown(link, { waitFor: 1200, timeoutMs: 25_000 });
       out.push(...extractEventimArtistEvents(artistMarkdown, link, src.default_event_type));
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 150));
     } catch {
       // Keep the scraper moving if one Eventim artist page fails.
     }
   }
   return out;
 }
+
 
 function extractEventimArtistEvents(md: string, artistPageUrl: string, eventType: "concert" | "comedy"): EventDraft[] {
   const lines = md.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -184,14 +189,14 @@ function parseEventimDate(lines: string[]): string | null {
 // RA (Resident Advisor) listing pages are highly structured — parse the markdown
 // directly instead of paying an AI roundtrip per page. Paginate until the page
 // shows "No results found" or contains no event links.
-async function fetchRaStockholm(src: SourceDef, firstPageMd: string): Promise<EventDraft[]> {
+async function fetchRaStockholm(src: SourceDef, firstPageMd: string, deadline: number): Promise<EventDraft[]> {
   const baseUrl = "https://ra.co/events/se/stockholm";
   const seen = new Set<string>();
   const out: EventDraft[] = [];
   let page = 1;
   let md = firstPageMd;
 
-  while (page <= 15) {
+  while (page <= 15 && Date.now() < deadline) {
     const hasResults = !/no results found/i.test(md)
       && /\]\(https:\/\/ra\.co\/events\/\d+/.test(md);
     if (!hasResults) break;
@@ -204,26 +209,23 @@ async function fetchRaStockholm(src: SourceDef, firstPageMd: string): Promise<Ev
 
     page++;
     try {
-      md = await scrapeMarkdown(`${baseUrl}?page=${page}`, { waitFor: src.waitFor });
+      md = await scrapeMarkdown(`${baseUrl}?page=${page}`, { waitFor: src.waitFor, timeoutMs: 30_000 });
       if (!md || md.length < 200) break;
     } catch {
       break;
     }
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 300));
   }
 
-  // Enrich up to N events with image + description from their detail page.
-  // Cap to keep Firecrawl spend predictable; prioritize events that don't yet
-  // have an image (all of them, on a fresh parse).
-  const ENRICH_LIMIT = 30;
-  const toEnrich = out.slice(0, ENRICH_LIMIT);
-  for (const draft of toEnrich) {
+  // Enrich events with image + description from their detail page, bounded by the
+  // remaining time budget rather than a fixed count.
+  for (const draft of out) {
+    if (Date.now() > deadline) break;
     try {
-      const detailMd = await scrapeMarkdown(draft.source_url, { waitFor: 1500 });
+      const detailMd = await scrapeMarkdown(draft.source_url, { waitFor: 1200, timeoutMs: 20_000 });
       const enriched = extractRaDetail(detailMd);
       if (enriched.image) draft.image_url = enriched.image;
       if (enriched.description) draft.description = enriched.description;
-      await new Promise((r) => setTimeout(r, 300));
     } catch {
       // Best-effort enrichment; keep going.
     }
@@ -231,6 +233,7 @@ async function fetchRaStockholm(src: SourceDef, firstPageMd: string): Promise<Ev
 
   return out;
 }
+
 
 // Pulls the flyer image and short description from an RA event detail page.
 function extractRaDetail(md: string): { image: string; description: string } {
