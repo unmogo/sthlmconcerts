@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Bun, not npm: Lovable keeps bun.lock current, and package-lock.json is out of
+# sync, so `npm ci` fails. Lint and test are not run yet: `bun run lint` has 7
+# pre-existing errors and there are no test files. Add them back once they pass.
+# prebuild regenerates public/sitemap.xml from the live (public) Supabase API;
+# on network failure it warns and continues, so it cannot fail the build.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Build
+        run: bun run build

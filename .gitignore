@@ -22,3 +22,35 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- secrets -------------------------------------------------------------
+.env
+.env.*
+!.env.example
+# Lovable exception: Lovable commits .env with the Supabase publishable key,
+# URL and project id (browser-public by design). Untracking it breaks Lovable
+# builds. Nothing else goes in it; real secrets live in Supabase function secrets.
+!.env
+
+# --- dependencies and builds ------------------------------------------------
+build/
+out/
+.next/
+.output/
+.vercel/
+.wrangler/
+*.tsbuildinfo
+coverage/
+
+# --- data and outputs -------------------------------------------------------
+data/
+reports/
+
+# --- agent and editor state ----------------------------------------------
+.nimbalyst/
+.claude/settings.local.json
+.claude/plugins/.nimbalyst-generated/
+
+# --- OS junk --------------------------------------------------------------
+Thumbs.db
+desktop.ini
