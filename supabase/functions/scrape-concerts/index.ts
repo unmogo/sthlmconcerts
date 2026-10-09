@@ -10,7 +10,7 @@
 //     job "running" forever.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { AiClient } from "../_shared/ai.ts";
-import { SOURCES, fetchSource } from "../_shared/sources.ts";
+import { SOURCES, fetchSourceChunk } from "../_shared/sources.ts";
 import { aiResolveVenue, isValidVenue, quickResolveVenue } from "../_shared/venues.ts";
 import { goodImageUrl, isBadImageUrl, isUsableTicketUrl, normalizeExternalUrl } from "../_shared/event-extract.ts";
 
@@ -118,7 +118,9 @@ async function blockedKeys(): Promise<Set<string>> {
   );
 }
 
-async function runSource(jobId: string, index: number) {
+type Continuation = { cursor: number; state: string[] };
+
+async function runSource(jobId: string, index: number, cont?: Continuation) {
   const sb = db();
   const src = SOURCES[index];
   const ai = new AiClient();
@@ -134,20 +136,34 @@ async function runSource(jobId: string, index: number) {
   const priorUpserted = job?.events_upserted ?? 0;
   const priorAi = job?.ai_calls ?? 0;
   const details = (job?.details ?? {}) as Record<string, SourceStats>;
+  // Chunked sources (LiveSpot) run over several invocations; keep a running total.
+  const carried = cont ? details[src.name] : undefined;
+  let chunkFound = 0;
+  let chunkUpserted = 0;
+  let processed = 0;
+  let next: Continuation | undefined;
 
   await patchJob(jobId, {
     status: "running",
     total: SOURCES.length,
     progress: index,
-    current_step: src.name,
+    current_step: cont ? `${src.name} (${cont.cursor}/${cont.state.length})` : src.name,
   });
 
   try {
     const blocked = await blockedKeys();
-    const drafts = await fetchSource(ai, src, deadline);
-    stats.found = drafts.length;
+    const chunk = await fetchSourceChunk(ai, src, deadline, cont?.cursor ?? 0, cont?.state);
+    const drafts = chunk.drafts;
+    next = chunk.next;
+    chunkFound = drafts.length;
+    await patchJob(jobId, {
+      current_step: chunk.total ? `${src.name} (${chunk.next?.cursor ?? chunk.total}/${chunk.total})` : src.name,
+    });
 
     for (const d of drafts) {
+      // Heartbeat on work done, not only on upserts, so the watchdog never
+      // confuses a slow-but-alive ingest with a dead worker.
+      if (++processed % 25 === 0) await patchJob(jobId, { events_upserted: priorUpserted + chunkUpserted });
       if (!d.date_iso) continue;
       const date = new Date(d.date_iso);
       if (isNaN(date.getTime())) continue;
@@ -215,14 +231,29 @@ async function runSource(jobId: string, index: number) {
         const { error: insErr } = await sb.from("concerts").insert(row);
         if (insErr) continue;
       }
-      stats.upserted++;
-      if (stats.upserted % 10 === 0) await patchJob(jobId, { events_upserted: priorUpserted + stats.upserted });
+      chunkUpserted++;
     }
   } catch (e) {
     stats.error = (e as Error).message.slice(0, 500);
   }
 
+  stats.found = (carried?.found ?? 0) + chunkFound;
+  stats.upserted = (carried?.upserted ?? 0) + chunkUpserted;
+  if (!stats.error && carried?.error) stats.error = carried.error;
   details[src.name] = stats;
+
+  // More chunks of this source to go: hand off to a fresh invocation.
+  if (next && !stats.error) {
+    await patchJob(jobId, {
+      events_found: priorFound + chunkFound,
+      events_upserted: priorUpserted + chunkUpserted,
+      ai_calls: priorAi + ai.usage.calls,
+      details,
+    });
+    await chainNext(jobId, index, next);
+    return;
+  }
+
   await sb.from("scrape_log").insert({
     source: src.name,
     batch: index + 1,
@@ -234,8 +265,8 @@ async function runSource(jobId: string, index: number) {
   const isLast = index >= SOURCES.length - 1;
   await patchJob(jobId, {
     progress: index + 1,
-    events_found: priorFound + stats.found,
-    events_upserted: priorUpserted + stats.upserted,
+    events_found: priorFound + chunkFound,
+    events_upserted: priorUpserted + chunkUpserted,
     ai_calls: priorAi + ai.usage.calls,
     details,
     ...(isLast
@@ -247,7 +278,7 @@ async function runSource(jobId: string, index: number) {
 }
 
 // Self-invoke for the next source so each HTTP invocation stays short-lived.
-async function chainNext(jobId: string, nextIndex: number) {
+async function chainNext(jobId: string, nextIndex: number, cont?: Continuation) {
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/scrape-concerts`;
   await fetch(url, {
     method: "POST",
@@ -255,14 +286,16 @@ async function chainNext(jobId: string, nextIndex: number) {
       Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ jobId, sourceIndex: nextIndex }),
+    body: JSON.stringify({ jobId, sourceIndex: nextIndex, ...(cont ? { cursor: cont.cursor, state: cont.state } : {}) }),
   });
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
-  const body = await req.json().catch(() => ({})) as { jobId?: string; sourceIndex?: number };
+  const body = await req.json().catch(() => ({})) as {
+    jobId?: string; sourceIndex?: number; cursor?: number; state?: unknown;
+  };
 
   // Continuation call from ourselves.
   if (body.jobId && typeof body.sourceIndex === "number" && isServiceCall(req)) {
@@ -272,8 +305,12 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...cors, "Content-Type": "application/json" },
       });
     }
+    const cont = typeof body.cursor === "number" && Array.isArray(body.state)
+      && body.state.every((x) => typeof x === "string")
+      ? { cursor: body.cursor, state: body.state as string[] }
+      : undefined;
     EdgeRuntime.waitUntil(
-      runSource(body.jobId!, index).catch(async (e) => {
+      runSource(body.jobId!, index, cont).catch(async (e) => {
         await patchJob(body.jobId!, {
           status: "failed",
           error: (e as Error).message.slice(0, 1000),
