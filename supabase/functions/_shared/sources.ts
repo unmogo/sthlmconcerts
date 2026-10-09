@@ -92,9 +92,6 @@ export async function fetchSource(
   src: SourceDef,
   deadline: number = Date.now() + 200_000,
 ): Promise<EventDraft[]> {
-  // LiveSpot is server-rendered with full schema.org data on every event page —
-  // no Firecrawl, no AI, and it yields the real seller link + poster.
-  if (src.name.startsWith("livespot")) return fetchLivespot(src, deadline);
   if (src.name === "cirkus") return fetchCirkus(src, deadline);
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
@@ -472,11 +469,6 @@ export async function fetchSourceChunk(
     total: slugs.length,
     next: end < slugs.length ? { cursor: end, state: slugs } : undefined,
   };
-}
-
-async function fetchLivespot(src: SourceDef, deadline: number): Promise<EventDraft[]> {
-  const slugs = await harvestLivespotSlugs(deadline);
-  return await mapPool(slugs, 12, deadline - 15_000, (slug) => fetchLivespotEvent(src, slug));
 }
 
 async function fetchLivespotEvent(src: SourceDef, slug: string): Promise<EventDraft | null> {
