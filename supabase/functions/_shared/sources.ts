@@ -92,9 +92,6 @@ export async function fetchSource(
   src: SourceDef,
   deadline: number = Date.now() + 200_000,
 ): Promise<EventDraft[]> {
-  // LiveSpot is server-rendered with full schema.org data on every event page —
-  // no Firecrawl, no AI, and it yields the real seller link + poster.
-  if (src.name.startsWith("livespot")) return fetchLivespot(src, deadline);
   if (src.name === "cirkus") return fetchCirkus(src, deadline);
   const md = await scrapeMarkdown(src.url, { waitFor: src.waitFor });
   if (!md || md.length < 200) return [];
@@ -443,67 +440,99 @@ function livespotCategory(html: string): "concert" | "comedy" | null {
   return null;
 }
 
-async function fetchLivespot(src: SourceDef, deadline: number): Promise<EventDraft[]> {
-  const slugs = await harvestLivespotSlugs(deadline);
-  if (!slugs.length) return [];
+// LiveSpot yields ~1500 Stockholm pages. Doing them all in one invocation blew
+// the edge worker's CPU/memory limits and killed it silently mid-job, so the
+// slug list is harvested once and then processed in chunks, one chunk per
+// invocation (the runner chains with `cursor` + `state`).
+export const LIVESPOT_CHUNK = 150;
 
-  // Plain fetches against a fast CDN: 12 in flight clears ~1500 pages inside the
-  // per-source budget, and mapPool abandons the tail if the deadline nears.
-  return await mapPool(slugs, 12, deadline - 15_000, async (slug) => {
-    const url = `https://livespot.se/event/${slug}`;
-    const html = await getHtml(url, 12_000);
-    if (!html) return null;
+export type SourceChunk = {
+  drafts: EventDraft[];
+  next?: { cursor: number; state: string[] };
+  total?: number;
+};
 
-    const category = livespotCategory(html);
-    const events = parseJsonLdEvents(html, url);
-    const event = events.find((e) => e.startDate && e.venue);
-    if (!event) return null;
+export async function fetchSourceChunk(
+  ai: AiClient,
+  src: SourceDef,
+  deadline: number,
+  cursor = 0,
+  state?: string[],
+): Promise<SourceChunk> {
+  if (!src.name.startsWith("livespot")) return { drafts: await fetchSource(ai, src, deadline) };
+  const slugs = state ?? (await harvestLivespotSlugs(deadline)).sort();
+  const slice = slugs.slice(cursor, cursor + LIVESPOT_CHUNK);
+  const drafts = await mapPool(slice, 12, deadline - 15_000, (slug) => fetchLivespotEvent(src, slug));
+  const end = cursor + slice.length;
+  return {
+    drafts,
+    total: slugs.length,
+    next: end < slugs.length ? { cursor: end, state: slugs } : undefined,
+  };
+}
 
-    // Category wins; without one, fall back to the schema.org type.
-    let eventType: "concert" | "comedy";
-    if (category) {
-      eventType = category;
-    } else if (event.type === "ComedyEvent") {
-      eventType = "comedy";
-    } else if (event.type === "MusicEvent" || event.type === "Festival") {
-      eventType = "concert";
-    } else {
-      return null; // theatre, dance, sport, kids, musicals — out of scope
-    }
-    if (!category && NON_MUSIC_JSONLD_TYPES.includes(event.type)) return null;
-    if (event.locality && !/stockholm/i.test(event.locality)) return null;
+async function fetchLivespotEvent(src: SourceDef, slug: string): Promise<EventDraft | null> {
+  const url = `https://livespot.se/event/${slug}`;
+  const html = await getHtml(url, 12_000);
+  if (!html) return null;
 
-    const ticket = isUsableTicketUrl(event.offerUrl) ? event.offerUrl! : "";
-    const image = event.image
-      ?? goodImageUrl(extractMetaContent(html, "og:image"))
-      ?? "";
+  const category = livespotCategory(html);
+  const events = parseJsonLdEvents(html, url);
+  const event = events.find((e) => e.startDate && e.venue);
+  if (!event) return null;
 
-    const draft: EventDraft = {
-      artist: event.name || stripTags(extractMetaContent(html, "og:title") ?? ""),
-      venue_raw: event.venue,
-      address_raw: event.locality || "Stockholm",
-      date_iso: event.startDate,
-      ticket_url: ticket,
-      source_url: url,
-      image_url: image,
-      description: event.description,
-      event_type: eventType,
-    };
-    return draft.artist ? draft : null;
-  });
+  // Category wins; without one, fall back to the schema.org type.
+  let eventType: "concert" | "comedy";
+  if (category) {
+    eventType = category;
+  } else if (event.type === "ComedyEvent") {
+    eventType = "comedy";
+  } else if (event.type === "MusicEvent" || event.type === "Festival") {
+    eventType = "concert";
+  } else {
+    return null; // theatre, dance, sport, kids, musicals — out of scope
+  }
+  if (!category && NON_MUSIC_JSONLD_TYPES.includes(event.type)) return null;
+  if (event.locality && !/stockholm/i.test(event.locality)) return null;
+
+  const ticket = isUsableTicketUrl(event.offerUrl) ? event.offerUrl! : "";
+  const image = event.image
+    ?? goodImageUrl(extractMetaContent(html, "og:image"))
+    ?? "";
+
+  const draft: EventDraft = {
+    artist: event.name || stripTags(extractMetaContent(html, "og:title") ?? ""),
+    venue_raw: event.venue,
+    address_raw: event.locality || "Stockholm",
+    date_iso: event.startDate,
+    ticket_url: ticket,
+    source_url: url,
+    image_url: image,
+    description: event.description,
+    event_type: eventType,
+  };
+  return draft.artist ? draft : null;
 }
 
 async function harvestLivespotSlugs(deadline: number): Promise<string[]> {
   const slugs = new Set<string>();
+  const LOC = "<loc>https://livespot.se/event/";
   for (let i = 1; i <= 12 && Date.now() < deadline - 30_000; i++) {
     const xml = await getHtml(`https://livespot.se/sitemap-events-${i}.xml`, 20_000);
     if (!xml) break;
+    // indexOf scan instead of a regex over ~2 MB per file keeps CPU low.
     let matched = 0;
-    for (const m of xml.matchAll(/<loc>https:\/\/livespot\.se\/event\/([^<]+)<\/loc>/g)) {
-      const slug = m[1];
-      if (!STHLM_SLUG_RE.test(slug)) continue;
-      slugs.add(slug);
-      matched++;
+    let pos = xml.indexOf(LOC);
+    while (pos !== -1) {
+      const start = pos + LOC.length;
+      const end = xml.indexOf("</loc>", start);
+      if (end === -1) break;
+      const slug = xml.slice(start, end);
+      if (STHLM_SLUG_RE.test(slug)) {
+        slugs.add(slug);
+        matched++;
+      }
+      pos = xml.indexOf(LOC, end);
     }
     if (matched === 0 && i > 1) break;
   }
